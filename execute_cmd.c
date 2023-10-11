@@ -9,16 +9,16 @@
  */
 void parse_command(char *command, char *args[], int *arg_count)
 {
-	char *token = strtok(command, " \t\n");
+	char **token = _strtok(command, " \t\n");
 
-	while (token != NULL)
+	while (token[*arg_count] != NULL)
 	{
-		args[*arg_count] = token;
+		args[*arg_count] = token[*arg_count];
 		(*arg_count)++;
-		token = strtok(NULL, " \t\n");
 	}
 
 	args[*arg_count] = NULL;
+	free(token);
 }
 
 /**

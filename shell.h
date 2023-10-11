@@ -14,6 +14,7 @@
 
 #define MAX_INPUT_SIZE 1024
 #define READ_SIZE 1024
+extern char **environ;
 
 /* Declaration of prototypes of helper functions */
 size_t _strlen(const char *str);
@@ -30,6 +31,7 @@ size_t _strcspn(const char *str, const char *reject);
 char *_itoa(int num);
 void *_memcpy(void *dest, const void *src, size_t n);
 void *_realloc(void *ptr, size_t old_size, size_t new_size);
+char **_strtok(char *line, char *delim);
 
 /* Declaration of prototypes of functions for the project */
 void execute_command(char *command);
