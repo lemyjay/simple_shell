@@ -59,13 +59,14 @@ void handle_parent(pid_t pid)
 	if (WIFEXITED(status))
 	{
 		int exit_status = WEXITSTATUS(status), len = 0;
+		char *str_stat =  _itoa(exit_status);
 
 		len += write(STDOUT_FILENO, str_exit, _strlen(str_exit));
-		len += write(STDOUT_FILENO, _itoa(exit_status), len);
+		len += write(STDOUT_FILENO, str_stat, _strlen(str_stat));
 		len += write(STDOUT_FILENO, "\n", 1);
 
 		(len < 0) ? write_error() : (void)0;
-		free(_itoa(exit_status));
+		free(str_stat);
 	}
 	else if (WIFSIGNALED(status))
 	{
