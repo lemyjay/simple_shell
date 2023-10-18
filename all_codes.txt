@@ -3065,3 +3065,2990 @@ int main(int argc, char *argv[])
 
 
 // End of shell.c
+
+
+
+
+// Start of _getline.h
+#ifndef __GET_LINE_C_H
+#define __GET_LINE_C_H
+
+#include "shell.h"
+
+#ifndef SSIZE_MAX
+# define SSIZE_MAX ((size_t) (SIZE_MAX / 2))
+#endif
+
+# undef flockstream
+# undef funlockstream
+# define flockstream(x) ((void) 0)
+# define funlockstream(x) ((void) 0)
+# define read_stream(stream) getc(stream)
+
+
+/**
+ * __get_delim - Get user input until a delim is keyed
+ * @lineptr: line pointer
+ * @n: len
+ * @delim: delim
+ * @stream: filepointer
+ * Return: size or EOF
+ */
+ssize_t __get_delim(char **lineptr, size_t *n, int delim, FILE *stream)
+{	ssize_t result = 0;
+	int i = 0;
+	char *new_lineptr = NULL;
+	size_t needed = 0, len = 0;
+
+	if (!lineptr || !n || !stream)
+	{	errno = EINVAL;
+		return (EOF);
+	} flockstream(stream);
+	if (*lineptr == NULL || *n == 0)
+	{	*n = 120;
+		new_lineptr = (char *) realloc(*lineptr, *n);
+		if (!new_lineptr)
+		{	result = EOF;
+			goto KILL;
+		} *lineptr = new_lineptr;
+	}
+	for (; i != delim ; len++)
+	{	i = read_stream(stream);
+		if (i == EOF)
+		{	result = EOF;
+			break;
+		}
+		if (len + 1 >= *n)
+		{	needed = (2 * *n + 1) > SSIZE_MAX ? SSIZE_MAX : (2 * *n + 1);
+			if (len + 1 >= needed)
+			{	result = EOF;
+				errno = EOVERFLOW;
+				goto KILL;
+			}	new_lineptr = (char *) realloc(*lineptr, needed);
+			if (!new_lineptr)
+			{	result = EOF;
+				goto KILL;
+			}	*lineptr = new_lineptr;
+			*n = needed;
+		}	(*lineptr)[len] = i;
+	} (*lineptr)[len] = END;
+	result = len ? (ssize_t) len : result;
+KILL:	funlockstream(stream);
+	return (result);
+}
+
+#undef __get_line
+/**
+ * __get_line - local __get_line function
+ * @s: String
+ * @n: Len
+ * @stream: input source
+ * Return: size of text or EOF
+ */
+__home ssize_t __get_line(char **s, size_t *n, FILE *stream)
+{
+	return (__get_delim(s, n, '\n', stream));
+}
+
+/**
+ * __str_tok_r - parse string into tokens
+ * @s: String
+ * @delim: delim
+ * @save_ptr: save pointer
+ * Return: string
+ */
+__home char *__str_tok_r(char *s, const char *delim, char **save_ptr)
+{
+	char *end;
+
+	if (s == NULL)
+		s = *save_ptr;
+
+	if (*s == END)
+	{
+		*save_ptr = s;
+		return (NULL);
+	}
+
+	s += strspn(s, delim);
+	if (*s == END)
+	{
+		*save_ptr = s;
+		return (NULL);
+	}
+
+	end = s + strcspn(s, delim);
+	if (*end == END)
+	{
+		*save_ptr = end;
+		return (s);
+	}
+
+	*end = END;
+	*save_ptr = ++end;
+	return (s);
+}
+
+#undef __str_tok
+/**
+ * __str_tok - parse string into tokens
+ * @s: string
+ * @delim: delimeter
+ * Return: tokens
+ */
+__home char *__str_tok(char *s, const char *delim)
+{
+	static char *save;
+
+	return (__str_tok_r(s, delim, &save));
+}
+#endif
+
+
+
+
+// End of _getline.h
+
+
+
+
+// Start of shell.h
+#ifndef SHELL_H
+#define SHELL_H
+
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
+
+#define END_OF_FILE -2
+#define EXIT -3
+
+#define __silent __attribute__((__unused__))
+#define __home __attribute__((weak))
+#define END '\0'
+
+typedef char mask_char;
+typedef int mask_int;
+
+#undef fi
+#undef esle
+#undef rof
+
+#define fi if
+#define esle else
+#define rof for
+
+/* Global environemnt */
+extern char **environ;
+
+/**
+ * struct list_s - A new struct type defining a linked list.
+ * @dir: A directory path.
+ * @next: A pointer to another struct list_s.
+ */
+typedef struct list_s
+{
+	char *dir;
+	struct list_s *next;
+} list_t;
+
+/**
+ * struct builtin_s - A new struct type defining builtin commands.
+ * @name: The name of the builtin command.
+ * @f: A function pointer to the builtin command's function.
+ */
+typedef struct builtin_s
+{
+	char *name;
+	int (*f)(char **argv, char **front);
+} builtin_t;
+
+/**
+ * struct alias_s - A new struct defining aliases.
+ * @name: The name of the alias.
+ * @value: The value of the alias.
+ * @next: A pointer to another struct alias_s.
+ */
+typedef struct alias_s
+{
+	char *name;
+	char *value;
+	struct alias_s *next;
+} alias_t;
+
+/* Global aliases linked list */
+alias_t *aliases;
+mask_char *name;
+mask_int hist;
+
+/* Main Helpers */
+ssize_t _getline(char **lineptr, size_t *n, FILE *stream);
+void *_realloc(void *ptr, unsigned int old_size, unsigned int new_size);
+char **_strtok(char *line, char *delim);
+char *get_location(char *command);
+list_t *get_path_dir(char *path);
+int execute(char **args, char **front);
+void free_list(list_t *head);
+char *_itoa(int num);
+
+/* Input Helpers */
+void handle_line(char **line, ssize_t read);
+void substitute_arg(char **args, int *exe_ret);
+char *get_args(char *line, int *exe_ret);
+int call_args(char **args, char **front, int *exe_ret);
+int run_args(char **args, char **front, int *exe_ret);
+int handle_args(int *exe_ret);
+int check_args(char **args);
+void free_args(char **args, char **front);
+char **replace_aliases(char **args);
+
+/* String functions */
+int _strlen(const char *s);
+char *_strcat(char *dest, const char *src);
+char *_strncat(char *dest, const char *src, size_t n);
+char *_strcpy(char *dest, const char *src);
+char *_strchr(char *s, char c);
+int _strspn(char *s, char *accept);
+int _strcmp(char *s1, char *s2);
+int _strncmp(const char *s1, const char *s2, size_t n);
+
+/* Builtins */
+int (*get_builtin(char *command))(char **args, char **front);
+int builtin_exit(char **args, char **front);
+int builtin_env(char **args, __silent char **front);
+int builtin_setenv(char **args, __silent char **front);
+int builtin_unsetenv(char **args, __silent char **front);
+int builtin_cd(char **args, __silent char **front);
+int builtin_alias(char **args, __silent char **front);
+int builtin_help(char **args, __silent char **front);
+
+/* Builtin Helpers */
+char **_copyenv(void);
+void free_env(void);
+char **_getenv(const char *var);
+
+/* Error Handling */
+int create_error(char **args, int err);
+char *error_env(char **args);
+char *error_1(char **args);
+char *error_2_exit(char **args);
+char *error_2_cd(char **args);
+char *error_2_syntax(char **args);
+char *error_126(char **args);
+char *error_127(char **args);
+
+/* Linkedlist Helpers */
+alias_t *add_alias_end(alias_t **head, char *name, char *value);
+void free_alias_list(alias_t *head);
+list_t *add_node_end(list_t **head, char *dir);
+void free_list(list_t *head);
+
+void help_all(void);
+void help_alias(void);
+void help_cd(void);
+void help_exit(void);
+void help_help(void);
+void help_env(void);
+void help_setenv(void);
+void help_unsetenv(void);
+void help_history(void);
+
+int file_cmds(char *file_path, int *exe_ret);
+#endif /* SHELL_H */
+
+
+
+
+// End of shell.h
+
+
+
+
+// Start of _getline.c
+#include "shell.h"
+
+/**
+ * _realloc - Reallocates a memory block using malloc and free.
+ * @ptr: A pointer to the memory previously allocated.
+ * @old_size: The size in bytes of the allocated space for ptr.
+ * @new_size: The size in bytes for the new memory block.
+ *
+ * Return: If new_size == old_size - ptr.
+ *         If new_size == 0 and ptr is not NULL - NULL.
+ *         Otherwise - a pointer to the reallocated memory block.
+ */
+void *_realloc(void *ptr, unsigned int old_size, unsigned int new_size)
+{
+	void *mem;
+	char *ptr_copy, *filler;
+	unsigned int index;
+
+	if (new_size == old_size)
+		return (ptr);
+
+	if (ptr == NULL)
+	{
+		mem = malloc(new_size);
+		if (mem == NULL)
+			return (NULL);
+
+		return (mem);
+	}
+
+	if (new_size == 0 && ptr != NULL)
+	{
+		free(ptr);
+		return (NULL);
+	}
+
+	ptr_copy = ptr;
+	mem = malloc(sizeof(*ptr_copy) * new_size);
+	if (mem == NULL)
+	{
+		free(ptr);
+		return (NULL);
+	}
+
+	filler = mem;
+
+	for (index = 0; index < old_size && index < new_size; index++)
+		filler[index] = *ptr_copy++;
+
+	free(ptr);
+	return (mem);
+}
+
+/**
+ * assign_lineptr - Reassigns the lineptr variable for _getline.
+ * @lineptr: A buffer to store an input string.
+ * @n: The size of lineptr.
+ * @buffer: The string to assign to lineptr.
+ * @b: The size of buffer.
+ */
+void assign_lineptr(char **lineptr, size_t *n, char *buffer, size_t b)
+{
+	if (*lineptr == NULL)
+	{
+		if (b > 120)
+			*n = b;
+		else
+			*n = 120;
+		*lineptr = buffer;
+	}
+	else if (*n < b)
+	{
+		if (b > 120)
+			*n = b;
+		else
+			*n = 120;
+		*lineptr = buffer;
+	}
+	else
+	{
+		_strcpy(*lineptr, buffer);
+		free(buffer);
+	}
+}
+
+/**
+ * _getline - Reads input from a stream.
+ * @lineptr: A buffer to store the input.
+ * @n: The size of lineptr.
+ * @stream: The stream to read from.
+ *
+ * Return: The number of bytes read.
+ */
+ssize_t _getline(char **lineptr, size_t *n, FILE *stream)
+{
+	static ssize_t input;
+	ssize_t ret;
+	char c = 'x', *buffer;
+	int r;
+
+	if (input == 0)
+		fflush(stream);
+	else
+		return (-1);
+	input = 0;
+
+	buffer = malloc(sizeof(char) * 120);
+	if (!buffer)
+		return (-1);
+
+	while (c != '\n')
+	{	r = read(STDIN_FILENO, &c, 1);
+		if (r == -1 || (r == 0 && input == 0))
+		{
+			free(buffer);
+			return (-1);
+		}
+		if (r == 0 && input != 0)
+		{
+			input++;
+			break;
+		}
+
+		if (input >= 120)
+			buffer = _realloc(buffer, input, input + 1);
+
+		buffer[input] = c;
+		input++;
+	}	buffer[input] = '\0';
+	assign_lineptr(lineptr, n, buffer, input);
+	ret = input;
+	if (r != 0)
+		input = 0;
+	return (ret);
+}
+
+
+
+
+// End of _getline.c
+
+
+
+
+// Start of alias.c
+#include "shell.h"
+
+char **replace_aliases(char **args);
+void print_alias(alias_t *alias);
+void set_alias(char *var_name, char *value);
+
+/**
+ * builtin_alias - Builtin command that either prints all aliases, specific
+ * aliases, or sets an alias.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
+ *
+ * Return: If an error occurs - -1.
+ *         Otherwise - 0.
+ */
+int builtin_alias(char **args, __silent char **front)
+{
+	alias_t *temp = aliases;
+	int i, ret = 0;
+	char *value;
+
+	if (!args[0])
+	{
+		while (temp)
+		{
+			print_alias(temp);
+			temp = temp->next;
+		}
+		return (ret);
+	}
+	for (i = 0; args[i]; i++)
+	{
+		temp = aliases;
+		value = _strchr(args[i], '=');
+		if (!value)
+		{
+			while (temp)
+			{
+				if (_strcmp(args[i], temp->name) == 0)
+				{
+					print_alias(temp);
+					break;
+				}
+				temp = temp->next;
+			}
+			if (!temp)
+				ret = create_error(args + i, 1);
+		}
+		else
+			set_alias(args[i], value);
+	}
+	return (ret);
+}
+
+/**
+ * set_alias - Will either set an existing alias 'name' with a new value,
+ * 'value' or creates a new alias with 'name' and 'value'.
+ * @var_name: Name of the alias.
+ * @value: Value of the alias. First character is a '='.
+ */
+void set_alias(char *var_name, char *value)
+{
+	alias_t *temp = aliases;
+	int len, j, k;
+	char *new_value;
+
+	*value = '\0';
+	value++;
+	len = _strlen(value) - _strspn(value, "'\"");
+	new_value = malloc(sizeof(char) * (len + 1));
+	if (!new_value)
+		return;
+	for (j = 0, k = 0; value[j]; j++)
+	{
+		if (value[j] != '\'' && value[j] != '"')
+			new_value[k++] = value[j];
+	}
+	new_value[k] = '\0';
+	while (temp)
+	{
+		if (_strcmp(var_name, temp->name) == 0)
+		{
+			free(temp->value);
+			temp->value = new_value;
+			break;
+		}
+		temp = temp->next;
+	}
+	if (!temp)
+		add_alias_end(&aliases, var_name, new_value);
+}
+
+/**
+ * print_alias - Prints the alias in the format name='value'.
+ * @alias: Pointer to an alias.
+ */
+void print_alias(alias_t *alias)
+{
+	char *alias_string;
+	int len = _strlen(alias->name) + _strlen(alias->value) + 4;
+
+	alias_string = malloc(sizeof(char) * (len + 1));
+	if (!alias_string)
+		return;
+	_strcpy(alias_string, alias->name);
+	_strcat(alias_string, "='");
+	_strcat(alias_string, alias->value);
+	_strcat(alias_string, "'\n");
+
+	write(STDOUT_FILENO, alias_string, len);
+	free(alias_string);
+}
+/**
+ * replace_aliases - Goes through the arguments and replace any matching alias
+ * with their value.
+ * @args: 2D pointer to the arguments.
+ *
+ * Return: 2D pointer to the arguments.
+ */
+char **replace_aliases(char **args)
+{
+	alias_t *temp;
+	int i;
+	char *new_value;
+
+	if (_strcmp(args[0], "alias") == 0)
+		return (args);
+	for (i = 0; args[i]; i++)
+	{
+		temp = aliases;
+		while (temp)
+		{
+			if (_strcmp(args[i], temp->name) == 0)
+			{
+				new_value = malloc(sizeof(char) * (_strlen(temp->value) + 1));
+				if (!new_value)
+				{
+					free_args(args, args);
+					return (NULL);
+				}
+				_strcpy(new_value, temp->value);
+				free(args[i]);
+				args[i] = new_value;
+				i--;
+				break;
+			}
+			temp = temp->next;
+		}
+	}
+
+	return (args);
+}
+
+
+
+
+
+// End of alias.c
+
+
+
+
+// Start of builtin_0.c
+#include "shell.h"
+
+/**
+ * get_builtin - Matches a command with a corresponding
+ *	shellby builtin function.
+ * @command: The command to match.
+ *
+ * Return: A function pointer to the corresponding builtin.
+ */
+int (*get_builtin(char *command))(char **args, char **front)
+{
+	builtin_t funcs[] = {
+		{ "exit", builtin_exit },
+		{ "quit", builtin_exit},
+		{ "env", builtin_env },
+		{ "setenv", builtin_setenv },
+		{ "unsetenv", builtin_unsetenv },
+		{ "cd", builtin_cd },
+		{ "alias", builtin_alias },
+		{ "help", builtin_help },
+		{ NULL, NULL }
+	};
+	int i;
+
+	for (i = 0; funcs[i].name; i++)
+	{
+		if (_strcmp(funcs[i].name, command) == 0)
+			break;
+	}
+	return (funcs[i].f);
+}
+
+/**
+ * builtin_exit - Causes normal process termination
+ *	for the shellby shell.
+ * @args: An array of arguments containing the exit value.
+ * @front: A double pointer to the beginning of args.
+ *
+ * Return: If there are no arguments - -3.
+ *	If the given exit value is invalid - 2.
+ *	O/w - exits with the given status value.
+ *
+ * Description: Upon returning -3, the program exits back in the main function.
+ */
+int builtin_exit(char **args, char **front)
+{
+	int i = 0, len_of_int = 10;
+	unsigned int num = 0, max = 1 << (sizeof(int) * 8 - 1);
+
+	if (args[0])
+	{
+		if (args[0][0] == '+')
+		{
+			i = 1;
+			len_of_int++;
+		}
+		for (; args[0][i]; i++)
+		{
+			if (i <= len_of_int && args[0][i] >= '0' && args[0][i] <= '9')
+				num = (num * 10) + (args[0][i] - '0');
+			else
+				return (create_error(--args, 2));
+		}
+	}
+	else
+	{
+		return (-3);
+	}
+	if (num > max - 1)
+		return (create_error(--args, 2));
+	args -= 1;
+	free_args(args, front);
+	free_env();
+	free_alias_list(aliases);
+	exit(num);
+}
+
+/**
+ * builtin_help - Displays information about shellby builtin commands.
+ * @args: An array of arguments.
+ * @front: A pointer to the beginning of args.
+ *
+ * Return: If an error occurs - -1.
+ *	Otherwise - 0.
+ */
+int builtin_help(char **args, __silent char **front)
+{
+	if (!args[0])
+		help_all();
+	else if (_strcmp(args[0], "alias") == 0)
+		help_alias();
+	else if (_strcmp(args[0], "cd") == 0)
+		help_cd();
+	else if (_strcmp(args[0], "exit") == 0)
+		help_exit();
+	else if (_strcmp(args[0], "env") == 0)
+		help_env();
+	else if (_strcmp(args[0], "setenv") == 0)
+		help_setenv();
+	else if (_strcmp(args[0], "unsetenv") == 0)
+		help_unsetenv();
+	else if (_strcmp(args[0], "help") == 0)
+		help_help();
+	else
+		write(STDERR_FILENO, name, _strlen(name));
+
+	return (0);
+}
+
+/**
+ * builtin_cd - Changes the current directory of the shellby process.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
+ *
+ * Return: If the given string is not a directory - 2.
+ *	If an error occurs - -1.
+ *	Otherwise - 0.
+ */
+int builtin_cd(char **args, __silent char **front)
+{	char **dir_info, *new_line = "\n";
+	char *oldpwd = NULL, *pwd = NULL;
+	struct stat dir;
+
+	oldpwd = getcwd(oldpwd, 0);
+	fi(!oldpwd) return (-1);
+	if (args[0])
+	{	fi(*(args[0]) == '-' || _strcmp(args[0], "--") == 0)
+		{	fi((args[0][1] == '-' && !args[0][2]) || !args[0][1])
+			{ fi(_getenv("OLDPWD"))	(chdir(*_getenv("OLDPWD") + 7));
+			} esle {	free(oldpwd);
+				return (create_error(args, 2));
+			}
+		} esle	{	fi(stat(args[0], &dir) == 0 && S_ISDIR(dir.st_mode)
+				&& ((dir.st_mode & S_IXUSR) != 0))
+			chdir(args[0]);
+			esle {	free(oldpwd);
+				return (create_error(args, 2));
+			}
+		}
+	}	esle {	fi(_getenv("HOME") != NULL)
+			chdir(*(_getenv("HOME")) + 5);
+	}	pwd = getcwd(pwd, 0);
+	fi(!pwd) return (-1);
+	dir_info = malloc(sizeof(char *) * 2);
+	fi(!dir_info)	return (-1);
+	dir_info[0] = "OLDPWD";
+	dir_info[1] = oldpwd;
+	fi(builtin_setenv(dir_info, dir_info) == -1) return (-1);
+	dir_info[0] = "PWD";
+	dir_info[1] = pwd;
+	fi(builtin_setenv(dir_info, dir_info) == -1) return (-1);
+	if (args[0] && args[0][0] == '-' && args[0][1] != '-')
+	{	write(STDOUT_FILENO, pwd, _strlen(pwd));
+		write(STDOUT_FILENO, new_line, 1);
+	}	free(oldpwd);
+	free(pwd);
+	free(dir_info);
+	return (0);
+}
+
+
+
+
+// End of builtin_0.c
+
+
+
+
+// Start of builtin_1.c
+#include "shell.h"
+
+/**
+ * help_all - Displays all possible builtin shellby commands.
+ */
+void help_all(void)
+{
+	char *msg = "Shellby\nThese shell commands are defined internally.\n";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "Type 'help' to see this list.\nType 'help name' to find ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "out more about the function 'name'.\n\n  alias   \t";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "alias [NAME[='VALUE'] ...]\n  cd    \tcd   ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "[DIRECTORY]\n  exit    \texit [STATUS]\n  env     \tenv";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "\n  setenv  \tsetenv [VARIABLE] [VALUE]\n  unsetenv\t";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "unsetenv [VARIABLE]\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+/**
+ * help_alias - Displays information on the shellby builtin command 'alias'.
+ */
+void help_alias(void)
+{
+	char *msg = "alias: alias [NAME[='VALUE'] ...]\n\tHandles aliases.\n";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "\n\talias: Prints a list of all aliases, one per line, in ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "the format NAME='VALUE'.\n\talias name [name2 ...]:prints";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = " the aliases name, name2, etc. one per line, in the ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "form NAME='VALUE'.\n\talias NAME='VALUE' [...]: Defines";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = " an alias for each NAME whose VALUE is given. If NAME ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "is already an alias, replace its value with VALUE.\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+/**
+ * help_cd - Displays information on the shellby builtin command 'cd'.
+ */
+void help_cd(void)
+{
+	char *msg = "cd: cd [DIRECTORY]\n\tChanges the current directory of the";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = " process to DIRECTORY.\n\n\tIf no argument is given, the ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "command is interpreted as cd $HOME. If the argument '-' is";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = " given, the command is interpreted as cd $OLDPWD.\n\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "\tThe environment variables PWD and OLDPWD are updated ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "after a change of directory.\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+/**
+ * help_exit - Displays information on the shellby builtin command 'exit'.
+ */
+void help_exit(void)
+{
+	char *msg = "exit: exit [STATUS]\n\tExits the shell.\n\n\tThe ";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "STATUS argument is the integer used to exit the shell.";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = " If no argument is given, the command is interpreted as";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = " exit 0.\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+/**
+ * help_help - Displays information on the shellby builtin command 'help'.
+ */
+void help_help(void)
+{
+	char *msg = "help: help\n\tSee all possible Shellby builtin commands.\n";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "\n      help [BUILTIN NAME]\n\tSee specific information on each ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "builtin command.\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+
+
+
+// End of builtin_1.c
+
+
+
+
+// Start of builtin_2.c
+#include "shell.h"
+
+/**
+ * help_env - Displays information on the shellby builtin command 'env'.
+ */
+void help_env(void)
+{
+	char *msg = "env: env\n\tPrints the current environment.\n";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+/**
+ * help_setenv - Displays information on the shellby builtin command 'setenv'.
+ */
+void help_setenv(void)
+{
+	char *msg = "setenv: setenv [VARIABLE] [VALUE]\n\tInitializes a new";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "environment variable, or modifies an existing one.\n\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "\tUpon failure, prints a message to stderr.\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+/**
+ * help_unsetenv - Displays information on the shellby builtin command
+ * 'unsetenv'.
+ */
+void help_unsetenv(void)
+{
+	char *msg = "unsetenv: unsetenv [VARIABLE]\n\tRemoves an ";
+
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "environmental variable.\n\n\tUpon failure, prints a ";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+	msg = "message to stderr.\n";
+	write(STDOUT_FILENO, msg, _strlen(msg));
+}
+
+
+
+
+// End of builtin_2.c
+
+
+
+
+// Start of custom_f0.c
+#include "shell.h"
+
+/**
+ * _strlen - Returns the length of a string.
+ * @s: A pointer to the characters string.
+ *
+ * Return: The length of the character string.
+ */
+int _strlen(const char *s)
+{
+	int length = 0;
+
+	if (!s)
+		return (length);
+	for (length = 0; s[length]; length++)
+		;
+	return (length);
+}
+
+/**
+ * _strcpy - Copies the string pointed to by src, including the
+ *           terminating null byte, to the buffer pointed by des.
+ * @dest: Pointer to the destination of copied string.
+ * @src: Pointer to the src of the source string.
+ *
+ * Return: Pointer to dest.
+ */
+char *_strcpy(char *dest, const char *src)
+{
+	size_t i;
+
+	for (i = 0; src[i] != '\0'; i++)
+		dest[i] = src[i];
+	dest[i] = '\0';
+	return (dest);
+}
+
+/**
+ * _strcat - Concantenates two strings.
+ * @dest: Pointer to destination string.
+ * @src: Pointer to source string.
+ *
+ * Return: Pointer to destination string.
+ */
+char *_strcat(char *dest, const char *src)
+{
+	char *destTemp;
+	const char *srcTemp;
+
+	destTemp = dest;
+	srcTemp =  src;
+
+	while (*destTemp != '\0')
+		destTemp++;
+
+	while (*srcTemp != '\0')
+		*destTemp++ = *srcTemp++;
+	*destTemp = '\0';
+	return (dest);
+}
+
+/**
+ * _strncat - Concantenates two strings where n number
+ *            of bytes are copied from source.
+ * @dest: Pointer to destination string.
+ * @src: Pointer to source string.
+ * @n: n bytes to copy from src.
+ *
+ * Return: Pointer to destination string.
+ */
+char *_strncat(char *dest, const char *src, size_t n)
+{
+	size_t dest_len = _strlen(dest);
+	size_t i;
+
+	for (i = 0; i < n && src[i] != '\0'; i++)
+		dest[dest_len + i] = src[i];
+	dest[dest_len + i] = '\0';
+
+	return (dest);
+}
+
+
+/**
+ * _strconcat - Copies a string and returns a pointer to the array.
+ *
+ * @s1: String 1
+ * @s2: String 2
+ *
+ * Return: Pointer to the array or NULL.
+ */
+char *_strconcat(char *s1, char *s2)
+{
+	int i = 0, j = 0, k = 0, n = 0;
+	char *str;
+
+	if (s1 == NULL)
+		s1 = "";
+	if (s2 == NULL)
+		s2 = "";
+
+	while (*(s1 + i))
+		i++;
+
+	while (*(s2 + j))
+		j++;
+
+	str = malloc(sizeof(char) * (i + j + 3));
+	if (str == NULL)
+		return (NULL);
+
+	for (k = 0; k < i; k++)
+		*(str + k) = *(s1 + k);
+
+	for (n = 0; n <= j; n++)
+		*(str + n + k) = *(s2 + n);
+
+	return (str);
+}
+
+
+
+
+// End of custom_f0.c
+
+
+
+
+// Start of custom_f1.c
+#include "shell.h"
+
+/**
+ * _strdup - returns a pointer to a newly allocated space in memory,
+ * which contains a copy of the string given as a parameter.
+ *
+ * @str: string
+ *
+ * Return: pointer to space in memory or NULL
+ */
+char *_strdup(char *str)
+{
+	int length, i;
+	char *s;
+
+	if (!str)
+		return (NULL);
+
+	length = _strlen(str);
+	s = malloc(sizeof(char) * length + 1);
+
+	if (!s)
+		return (NULL);
+
+	for (i = 0; i < length; i++)
+		s[i] = str[i];
+
+	s[i] = END;
+
+	return (s);
+}
+
+/**
+ * _strchr - Locates a character in a string.
+ * @s: The string to be searched.
+ * @c: The character to be located.
+ *
+ * Return: If c is found - a pointer to the first occurence.
+ *         If c is not found - NULL.
+ */
+char *_strchr(char *s, char c)
+{
+	int index;
+
+	for (index = 0; s[index]; index++)
+	{
+		if (s[index] == c)
+			return (s + index);
+	}
+
+	return (NULL);
+}
+
+/**
+ * _strspn - Gets the length of a prefix substring.
+ * @s: The string to be searched.
+ * @accept: The prefix to be measured.
+ *
+ * Return: The number of bytes in s which
+ *         consist only of bytes from accept.
+ */
+int _strspn(char *s, char *accept)
+{
+	int bytes = 0;
+	int index;
+
+	while (*s)
+	{
+		for (index = 0; accept[index]; index++)
+		{
+			if (*s == accept[index])
+			{
+				bytes++;
+				break;
+			}
+		}
+		s++;
+	}
+	return (bytes);
+}
+
+/**
+ * _strcmp - Compares two strings.
+ * @s1: The first string to be compared.
+ * @s2: The second string to be compared.
+ *
+ * Return: Positive byte difference if s1 > s2
+ *         0 if s1 = s2
+ *         Negative byte difference if s1 < s2
+ */
+int _strcmp(char *s1, char *s2)
+{
+	while (*s1 && *s2 && *s1 == *s2)
+	{
+		s1++;
+		s2++;
+	}
+
+	if (*s1 != *s2)
+		return (*s1 - *s2);
+
+	return (0);
+}
+
+/**
+ * _strncmp - Compare two strings.
+ * @s1: Pointer to a string.
+ * @s2: Pointer to a string.
+ * @n: The first n bytes of the strings to compare.
+ *
+ * Return: Less than 0 if s1 is shorter than s2.
+ *         0 if s1 and s2 match.
+ *         Greater than 0 if s1 is longer than s2.
+ */
+int _strncmp(const char *s1, const char *s2, size_t n)
+{
+	size_t i;
+
+	for (i = 0; s1[i] && s2[i] && i < n; i++)
+	{
+		if (s1[i] > s2[i])
+			return (s1[i] - s2[i]);
+		else if (s1[i] < s2[i])
+			return (s1[i] - s2[i]);
+	}
+	if (i == n)
+		return (0);
+	else
+		return (-15);
+}
+
+
+
+
+// End of custom_f1.c
+
+
+
+
+// Start of env_file.c
+#include "shell.h"
+
+/**
+ * builtin_env - Prints the current environment.
+ * @args: An array of arguments passed to the shell.
+ * @front: A double pointer to the beginning of args.
+ *
+ * Return: If an error occurs - -1.
+ *	   Otherwise - 0.
+ *
+ * Description: Prints one variable per line in the
+ *              format 'variable'='value'.
+ */
+int builtin_env(char **args, __silent char **front)
+{
+	int index;
+	char nc = '\n';
+
+	if (!environ)
+		return (-1);
+
+	for (index = 0; environ[index]; index++)
+	{
+		write(STDOUT_FILENO, environ[index], _strlen(environ[index]));
+		write(STDOUT_FILENO, &nc, 1);
+	}
+
+	(void)args;
+	return (0);
+}
+
+/**
+ * builtin_setenv - Changes or adds an environmental variable to the PATH.
+ * @args: An array of arguments passed to the shell.
+ * @front: A double pointer to the beginning of args.
+ * Description: args[1] is the name of the new or existing PATH variable.
+ *              args[2] is the value to set the new or changed variable to.
+ *
+ * Return: If an error occurs - -1.
+ *         Otherwise - 0.
+ */
+int builtin_setenv(char **args, __silent char **front)
+{
+	char **env_var = NULL, **new_environ, *new_value;
+	size_t size;
+	int index;
+
+	if (!args[0] || !args[1])
+		return (create_error(args, -1));
+
+	new_value = malloc(_strlen(args[0]) + 1 + _strlen(args[1]) + 1);
+	if (!new_value)
+		return (create_error(args, -1));
+	_strcpy(new_value, args[0]);
+	_strcat(new_value, "=");
+	_strcat(new_value, args[1]);
+
+	env_var = _getenv(args[0]);
+	if (env_var)
+	{
+		free(*env_var);
+		*env_var = new_value;
+		return (0);
+	}
+	for (size = 0; environ[size]; size++)
+		;
+
+	new_environ = malloc(sizeof(char *) * (size + 2));
+	if (!new_environ)
+	{
+		free(new_value);
+		return (create_error(args, -1));
+	}
+
+	for (index = 0; environ[index]; index++)
+		new_environ[index] = environ[index];
+
+	free(environ);
+	environ = new_environ;
+	environ[index] = new_value;
+	environ[index + 1] = NULL;
+
+	return (0);
+}
+
+/**
+ * builtin_unsetenv - Deletes an environmental variable from the PATH.
+ * @args: An array of arguments passed to the shell.
+ * @front: A double pointer to the beginning of args.
+ * Description: args[1] is the PATH variable to remove.
+ *
+ * Return: If an error occurs - -1.
+ *         Otherwise - 0.
+ */
+int builtin_unsetenv(char **args, __silent char **front)
+{
+	char **env_var, **new_environ;
+	size_t size;
+	int index, index2;
+
+	if (!args[0])
+		return (create_error(args, -1));
+	env_var = _getenv(args[0]);
+	if (!env_var)
+		return (0);
+
+	for (size = 0; environ[size]; size++)
+		;
+
+	new_environ = malloc(sizeof(char *) * size);
+	if (!new_environ)
+		return (create_error(args, -1));
+
+	for (index = 0, index2 = 0; environ[index]; index++)
+	{
+		if (*env_var == environ[index])
+		{
+			free(*env_var);
+			continue;
+		}
+		new_environ[index2] = environ[index];
+		index2++;
+	}
+	free(environ);
+	environ = new_environ;
+	environ[size - 1] = NULL;
+
+	return (0);
+}
+
+
+
+
+// End of env_file.c
+
+
+
+
+// Start of environ.c
+#include "shell.h"
+
+/**
+ * _copyenv - Creates a copy of the environment.
+ *
+ * Return: If an error occurs - NULL.
+ *         O/w - a double pointer to the new copy.
+ */
+char **_copyenv(void)
+{
+	char **new_environ;
+	size_t size;
+	int index;
+
+	for (size = 0; environ[size]; size++)
+		;
+
+	new_environ = malloc(sizeof(char *) * (size + 1));
+	if (!new_environ)
+		return (NULL);
+
+	for (index = 0; environ[index]; index++)
+	{
+		new_environ[index] = malloc(_strlen(environ[index]) + 1);
+
+		if (!new_environ[index])
+		{
+			for (index--; index >= 0; index--)
+				free(new_environ[index]);
+			free(new_environ);
+			return (NULL);
+		}
+		_strcpy(new_environ[index], environ[index]);
+	}
+	new_environ[index] = NULL;
+
+	return (new_environ);
+}
+
+/**
+ * free_env - Frees the the environment copy.
+ */
+void free_env(void)
+{
+	int index;
+
+	for (index = 0; environ[index]; index++)
+		free(environ[index]);
+	free(environ);
+}
+
+/**
+ * _getenv - Gets an environmental variable from the PATH.
+ * @var: The name of the environmental variable to get.
+ *
+ * Return: If the environmental variable does not exist - NULL.
+ *         Otherwise - a pointer to the environmental variable.
+ */
+char **_getenv(const char *var)
+{
+	int index, len;
+
+	len = _strlen(var);
+	for (index = 0; environ[index]; index++)
+	{
+		if (_strncmp(var, environ[index], len) == 0)
+			return (&environ[index]);
+	}
+
+	return (NULL);
+}
+
+
+
+
+// End of environ.c
+
+
+
+
+// Start of err_msgs_a.c
+#include "shell.h"
+
+/**
+ * error_env - Creates an error message for builtin_env errors.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_env(char **args)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (NULL);
+
+	args--;
+	len = _strlen(name) + _strlen(hist_str) + _strlen(args[0]) + 45;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (NULL);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	_strcat(error, ": ");
+	_strcat(error, args[0]);
+	_strcat(error, ": Unable to add/remove from environment\n");
+
+	free(hist_str);
+	return (error);
+}
+
+/**
+ * error_1 - Creates an error message for builtin_alias errors.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_1(char **args)
+{
+	char *error;
+	int len;
+
+	len = _strlen(name) + _strlen(args[0]) + 13;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+		return (NULL);
+
+	_strcpy(error, "alias: ");
+	_strcat(error, args[0]);
+	_strcat(error, " not found\n");
+
+	return (error);
+}
+
+/**
+ * error_2_exit - Creates an error message for builtin_exit errors.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_2_exit(char **args)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (NULL);
+
+	len = _strlen(name) + _strlen(hist_str) + _strlen(args[0]) + 27;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (NULL);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	_strcat(error, ": exit: Illegal number: ");
+	_strcat(error, args[0]);
+	_strcat(error, "\n");
+
+	free(hist_str);
+	return (error);
+}
+
+/**
+ * error_2_cd - Creates an error message for builtin_cd errors.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_2_cd(char **args)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (NULL);
+
+	if (args[0][0] == '-')
+		args[0][2] = '\0';
+	len = _strlen(name) + _strlen(hist_str) + _strlen(args[0]) + 24;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (NULL);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	if (args[0][0] == '-')
+		_strcat(error, ": cd: Illegal option ");
+	else
+		_strcat(error, ": cd: can't cd to ");
+	_strcat(error, args[0]);
+	_strcat(error, "\n");
+
+	free(hist_str);
+	return (error);
+}
+
+/**
+ * error_2_syntax - Creates an error message for syntax errors.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_2_syntax(char **args)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (NULL);
+
+	len = _strlen(name) + _strlen(hist_str) + _strlen(args[0]) + 33;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (NULL);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	_strcat(error, ": Syntax error: \"");
+	_strcat(error, args[0]);
+	_strcat(error, "\" unexpected\n");
+
+	free(hist_str);
+	return (error);
+}
+
+
+
+
+// End of err_msgs_a.c
+
+
+
+
+// Start of err_msgs_b.c
+#include "shell.h"
+
+/**
+ * error_126 - Creates an error message for permission denied failures.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_126(char **args)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (NULL);
+
+	len = _strlen(name) + _strlen(hist_str) + _strlen(args[0]) + 24;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (NULL);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	_strcat(error, ": ");
+	_strcat(error, args[0]);
+	_strcat(error, ": Permission denied\n");
+
+	free(hist_str);
+	return (error);
+}
+
+/**
+ * error_127 - Creates an error message for command not found failures.
+ * @args: An array of arguments passed to the command.
+ *
+ * Return: The error string.
+ */
+char *error_127(char **args)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (NULL);
+
+	len = _strlen(name) + _strlen(hist_str) + _strlen(args[0]) + 16;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (NULL);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	_strcat(error, ": ");
+	_strcat(error, args[0]);
+	_strcat(error, ": not found\n");
+
+	free(hist_str);
+	return (error);
+}
+
+
+
+
+// End of err_msgs_b.c
+
+
+
+
+// Start of errors.c
+#include "shell.h"
+
+/**
+ * num_len - Counts the digit length of a number.
+ * @num: The number to measure.
+ *
+ * Return: The digit length.
+ */
+int num_len(int num)
+{
+	unsigned int num1;
+	int len = 1;
+
+	if (num < 0)
+	{
+		len++;
+		num1 = num * -1;
+	}
+	else
+	{
+		num1 = num;
+	}
+	while (num1 > 9)
+	{
+		len++;
+		num1 /= 10;
+	}
+
+	return (len);
+}
+
+/**
+ * _itoa - Converts an integer to a string.
+ * @num: The integer.
+ *
+ * Return: The converted string.
+ */
+char *_itoa(int num)
+{
+	char *buffer;
+	int len = num_len(num);
+	unsigned int num1;
+
+	buffer = malloc(sizeof(char) * (len + 1));
+	if (!buffer)
+		return (NULL);
+
+	buffer[len] = '\0';
+
+	if (num < 0)
+	{
+		num1 = num * -1;
+		buffer[0] = '-';
+	}
+	else
+	{
+		num1 = num;
+	}
+
+	len--;
+	do {
+		buffer[len] = (num1 % 10) + '0';
+		num1 /= 10;
+		len--;
+	} while (num1 > 0);
+
+	return (buffer);
+}
+
+
+/**
+ * create_error - Writes a custom error message to stderr.
+ * @args: An array of arguments.
+ * @err: The error value.
+ *
+ * Return: The error value.
+ */
+int create_error(char **args, int err)
+{
+	char *error;
+
+	switch (err)
+	{
+	case -1:
+		error = error_env(args);
+		break;
+	case 1:
+		error = error_1(args);
+		break;
+	case 2:
+		if (*(args[0]) == 'e')
+			error = error_2_exit(++args);
+		else if (args[0][0] == ';' || args[0][0] == '&' || args[0][0] == '|')
+			error = error_2_syntax(args);
+		else
+			error = error_2_cd(args);
+		break;
+	case 126:
+		error = error_126(args);
+		break;
+	case 127:
+		error = error_127(args);
+		break;
+	}
+	write(STDERR_FILENO, error, _strlen(error));
+
+	if (error)
+		free(error);
+	return (err);
+
+}
+
+
+
+
+// End of errors.c
+
+
+
+
+// Start of handle_file.c
+#include "shell.h"
+
+/**
+ * cant_open - If the file doesn't exist or lacks proper permissions, print
+ * a cant open error.
+ * @file_path: Path to the supposed file.
+ *
+ * Return: 127.
+ */
+int cant_open(char *file_path)
+{
+	char *error, *hist_str;
+	int len;
+
+	hist_str = _itoa(hist);
+	if (!hist_str)
+		return (127);
+
+	len = _strlen(name) + _strlen(hist_str) + _strlen(file_path) + 16;
+	error = malloc(sizeof(char) * (len + 1));
+	if (!error)
+	{
+		free(hist_str);
+		return (127);
+	}
+
+	_strcpy(error, name);
+	_strcat(error, ": ");
+	_strcat(error, hist_str);
+	_strcat(error, ": Can't open ");
+	_strcat(error, file_path);
+	_strcat(error, "\n");
+
+	free(hist_str);
+	write(STDERR_FILENO, error, len);
+	free(error);
+	return (127);
+}
+
+/**
+ * skip_blanc - skip
+ * @line: string
+ * Return: -
+ */
+ssize_t skip_blanc(char *line)
+{
+	ssize_t i;
+
+	for (i = 0; line[i] == '\n'; i++)
+		line[i] = ' ';
+	return (i);
+}
+
+/**
+ * start_f - open file
+ * @file_path: file_path
+ * Return: ssize_t
+ */
+ssize_t start_f(char *file_path)
+{
+	hist = 0;
+	return (open(file_path, O_RDONLY));
+}
+
+/**
+ * clean_ret - handle return and free
+ * @exe_ret: exit return
+ * @line: loc to free
+ * Return: return value
+ */
+int clean_ret(int exe_ret, char *line)
+{
+	free(line);
+	return (exe_ret);
+}
+/**
+ * file_cmds - Takes a file and attempts to run the commands stored
+ * within.
+ * @file_path: Path to the file.
+ * @exe_ret: Return value of the last executed command.
+ *
+ * Return: If file couldn't be opened - 127.
+ *		If malloc fails - -1.
+ *		Otherwise the return value of the last command ran.
+ */
+int file_cmds(char *file_path, int *exe_ret)
+{	ssize_t file, b_read, i, ret;
+	unsigned int line_size = 0, old_size = 120;
+	char *line, **args, **front, buffer[120];
+
+	file = start_f(file_path);
+	fi(file == -1) { *exe_ret = cant_open(file_path);
+		return (*exe_ret);
+	}	line = (char *) malloc(sizeof(char) * old_size);
+	fi(!line) return (-1);
+	line[0] = END;
+	do {	b_read = read(file, buffer, 119);
+		fi(b_read == 0 && line_size == 0) return (clean_ret(*exe_ret, line));
+		buffer[b_read] = '\0';
+		line_size += b_read;
+	fi(line_size > old_size) line = _realloc(line, old_size, line_size);
+		_strcat(line, buffer);
+		old_size = line_size;
+	} while (b_read);
+	i = skip_blanc(line);
+	for (; i < line_size; i++)
+	{	fi(line[i] == '\n') { line[i] = ';';
+			for (i += 1; i < line_size && line[i] == '\n'; i++)
+				line[i] = ' ';
+		} }	substitute_arg(&line, exe_ret);
+	handle_line(&line, line_size);
+	args = _strtok(line, " ");
+	free(line);
+	fi(!args) return (0);
+	fi(check_args(args) != 0) { *exe_ret = 2;
+		free_args(args, args);
+		return (*exe_ret);
+	}	front = args;
+	for (i = 0; args[i]; i++)
+	{	fi(_strncmp(args[i], ";", 1) == 0) { free(args[i]);
+			args[i] = NULL;
+			ret = (ssize_t)call_args(args, front, exe_ret);
+			args = &args[++i];
+			i = 0;
+		} }	ret = (ssize_t)call_args(args, front, exe_ret);
+	free(front);
+	return ((int)ret);
+}
+
+
+
+
+// End of handle_file.c
+
+
+
+
+// Start of handle_list.c
+#include "shell.h"
+
+/**
+ * add_alias_end - Adds a node to the end of a alias_t linked list.
+ * @head: A pointer to the head of the list_t list.
+ * @name: The name of the new alias to be added.
+ * @value: The value of the new alias to be added.
+ *
+ * Return: If an error occurs - NULL.
+ *         Otherwise - a pointer to the new node.
+ */
+alias_t *add_alias_end(alias_t **head, char *name, char *value)
+{
+	alias_t *new_node = malloc(sizeof(alias_t));
+	alias_t *last;
+
+	if (!new_node)
+		return (NULL);
+
+	new_node->next = NULL;
+	new_node->name = malloc(sizeof(char) * (_strlen(name) + 1));
+	if (!new_node->name)
+	{
+		free(new_node);
+		return (NULL);
+	}
+	new_node->value = value;
+	_strcpy(new_node->name, name);
+
+	if (*head)
+	{
+		last = *head;
+		while (last->next != NULL)
+			last = last->next;
+		last->next = new_node;
+	}
+	else
+		*head = new_node;
+
+	return (new_node);
+}
+
+/**
+ * add_node_end - Adds a node to the end of a list_t linked list.
+ * @head: A pointer to the head of the list_t list.
+ * @dir: The directory path for the new node to contain.
+ *
+ * Return: If an error occurs - NULL.
+ *         Otherwise - a pointer to the new node.
+ */
+list_t *add_node_end(list_t **head, char *dir)
+{
+	list_t *new_node = malloc(sizeof(list_t));
+	list_t *last;
+
+	if (!new_node)
+		return (NULL);
+
+	new_node->dir = dir;
+	new_node->next = NULL;
+
+	if (*head)
+	{
+		last = *head;
+		while (last->next != NULL)
+			last = last->next;
+		last->next = new_node;
+	}
+	else
+		*head = new_node;
+
+	return (new_node);
+}
+
+/**
+ * free_alias_list - Frees a alias_t linked list.
+ * @head: THe head of the alias_t list.
+ */
+void free_alias_list(alias_t *head)
+{
+	alias_t *next;
+
+	while (head)
+	{
+		next = head->next;
+		free(head->name);
+		free(head->value);
+		free(head);
+		head = next;
+	}
+}
+
+/**
+ * free_list - Frees a list_t linked list.
+ * @head: The head of the list_t list.
+ */
+void free_list(list_t *head)
+{
+	list_t *next;
+
+	while (head)
+	{
+		next = head->next;
+		free(head->dir);
+		free(head);
+		head = next;
+	}
+}
+
+
+
+
+// End of handle_list.c
+
+
+
+
+// Start of helpers_0.c
+#include "shell.h"
+
+/**
+ * free_args - Frees up memory taken by args.
+ * @args: A null-terminated double pointer containing commands/arguments.
+ * @front: A double pointer to the beginning of args.
+ */
+void free_args(char **args, char **front)
+{
+	size_t i;
+
+	for (i = 0; args[i] || args[i + 1]; i++)
+		free(args[i]);
+
+	free(front);
+}
+
+/**
+ * get_pid - Gets the current process ID.
+ * Description: Opens the stat file, a space-delimited file containing
+ *              information about the current process. The PID is the
+ *              first word in the file. The function reads the PID into
+ *              a buffer and replace the space at the end with a \0 byte.
+ *
+ * Return: The current process ID or NULL on failure.
+ */
+char *get_pid(void)
+{
+	size_t i = 0;
+	char *buffer;
+	ssize_t file;
+
+	file = open("/proc/self/stat", O_RDONLY);
+	if (file == -1)
+	{
+		perror("Cant read file");
+		return (NULL);
+	}
+	buffer = malloc(120);
+	if (!buffer)
+	{
+		close(file);
+		return (NULL);
+	}
+	read(file, buffer, 120);
+	while (buffer[i] != ' ')
+		i++;
+	buffer[i] = '\0';
+
+	close(file);
+	return (buffer);
+}
+
+/**
+ * get_env_value - Gets the value corresponding to an environmental variable.
+ * @beginning: The environmental variable to search for.
+ * @len: The length of the environmental variable to search for.
+ *
+ * Return: If the variable is not found - an empty string.
+ *         Otherwise - the value of the environmental variable.
+ *
+ * Description: Variables are stored in the format VARIABLE=VALUE.
+ */
+char *get_env_value(char *beginning, int len)
+{
+	char **var_addr;
+	char *rep = NULL, *temp, *var;
+
+	var = malloc(len + 1);
+	if (!var)
+		return (NULL);
+	var[0] = '\0';
+	_strncat(var, beginning, len);
+
+	var_addr = _getenv(var);
+	free(var);
+	if (var_addr)
+	{
+		temp = *var_addr;
+		while (*temp != '=')
+			temp++;
+		temp++;
+		rep = malloc(_strlen(temp) + 1);
+		if (rep)
+			_strcpy(rep, temp);
+	}
+
+	return (rep);
+}
+
+/**
+ * substitute_arg - Handles variable rep.
+ * @line: A double pointer containing the command and arguments.
+ * @exe_ret: A pointer to the return value of the last executed command.
+ *
+ * Description: Replaces $$ with the current PID, $? with the return value
+ *              of the last executed program, and envrionmental variables
+ *              preceded by $ with their corresponding value.
+ */
+void substitute_arg(char **line, int *exe_ret)
+{	int j, k = 0, len;
+	char *rep = NULL, *old_l = NULL, *new_line;
+
+	old_l = *line;
+	for (j = 0; old_l[j]; j++)
+	{
+		if (old_l[j] == '$' && old_l[j + 1] &&
+				old_l[j + 1] != ' ')
+		{
+			if (old_l[j + 1] == '$')
+			{	rep = get_pid();
+				k = j + 2;
+			}
+			else if (old_l[j + 1] == '?')
+			{	rep = _itoa(*exe_ret);
+				k = j + 2;
+			}
+			else if (old_l[j + 1])
+			{
+				for (k = j + 1; old_l[k] && old_l[k] != '$' && old_l[k] != ' ';)
+					k++;
+				len = k - (j + 1);
+				rep = get_env_value(&old_l[j + 1], len);
+			}
+			new_line = malloc(j + _strlen(rep) + _strlen(&old_l[k]) + 1);
+			if (!line)
+				return;
+			new_line[0] = '\0';
+			_strncat(new_line, old_l, j);
+			if (rep)
+			{	_strcat(new_line, rep);
+				free(rep);
+				rep = NULL;
+			}	_strcat(new_line, &old_l[k]);
+			free(old_l);
+			*line = new_line;
+			old_l = new_line;
+			j = -1;
+		}
+	}
+}
+
+
+
+
+// End of helpers_0.c
+
+
+
+
+// Start of helpers_1.c
+#include "shell.h"
+
+ssize_t get_new_len(char *line);
+void logical_ops(char *line, ssize_t *new_len);
+
+/**
+ * handle_line - Partitions a line read from standard input as needed.
+ * @line: A pointer to a line read from standard input.
+ * @read: The length of line.
+ *
+ * Description: Spaces are inserted to separate ";", "||", and "&&".
+ *              Replaces "#" with '\0'.
+ */
+void handle_line(char **line, ssize_t read)
+{
+	char *old_line, *new_line;
+	char previous, current, next;
+	size_t i, j;
+	ssize_t new_len;
+
+	new_len = get_new_len(*line);
+	if (new_len == read - 1)
+		return;
+	new_line = malloc(new_len + 1);
+	if (!new_line)
+		return;
+	j = 0;
+	old_line = *line;
+	for (i = 0; old_line[i]; i++)
+	{
+		current = old_line[i];
+		next = old_line[i + 1];
+		if (i != 0)
+		{
+			previous = old_line[i - 1];
+			if (current == ';')
+			{
+				if (next == ';' && previous != ' ' && previous != ';')
+				{
+					new_line[j++] = ' ';
+					new_line[j++] = ';';
+					continue;
+				}
+				else if (previous == ';' && next != ' ')
+				{
+					new_line[j++] = ';';
+					new_line[j++] = ' ';
+					continue;
+				}
+				if (previous != ' ')
+					new_line[j++] = ' ';
+				new_line[j++] = ';';
+				if (next != ' ')
+					new_line[j++] = ' ';
+				continue;
+			}
+			else if (current == '&')
+			{
+				if (next == '&' && previous != ' ')
+					new_line[j++] = ' ';
+				else if (previous == '&' && next != ' ')
+				{
+					new_line[j++] = '&';
+					new_line[j++] = ' ';
+					continue;
+				}
+			}
+			else if (current == '|')
+			{
+				if (next == '|' && previous != ' ')
+					new_line[j++]  = ' ';
+				else if (previous == '|' && next != ' ')
+				{
+					new_line[j++] = '|';
+					new_line[j++] = ' ';
+					continue;
+				}
+			}
+		}
+		else if (current == ';')
+		{
+			if (i != 0 && old_line[i - 1] != ' ')
+				new_line[j++] = ' ';
+			new_line[j++] = ';';
+			if (next != ' ' && next != ';')
+				new_line[j++] = ' ';
+			continue;
+		}
+		new_line[j++] = old_line[i];
+	}
+	new_line[j] = '\0';
+
+	free(*line);
+	*line = new_line;
+}
+
+/**
+ * get_new_len - Gets the new length of a line partitioned
+ *               by ";", "||", "&&&", or "#".
+ * @line: The line to check.
+ *
+ * Return: The new length of the line.
+ *
+ * Description: Cuts short lines containing '#' comments with '\0'.
+ */
+
+ssize_t get_new_len(char *line)
+{
+	size_t i;
+	ssize_t new_len = 0;
+	char current, next;
+
+	for (i = 0; line[i]; i++)
+	{
+		current = line[i];
+		next = line[i + 1];
+		if (current == '#')
+		{
+			if (i == 0 || line[i - 1] == ' ')
+			{
+				line[i] = '\0';
+				break;
+			}
+		}
+		else if (i != 0)
+		{
+			if (current == ';')
+			{
+				if (next == ';' && line[i - 1] != ' ' && line[i - 1] != ';')
+				{
+					new_len += 2;
+					continue;
+				}
+				else if (line[i - 1] == ';' && next != ' ')
+				{
+					new_len += 2;
+					continue;
+				}
+				if (line[i - 1] != ' ')
+					new_len++;
+				if (next != ' ')
+					new_len++;
+			}
+			else
+				logical_ops(&line[i], &new_len);
+		}
+		else if (current == ';')
+		{
+			if (i != 0 && line[i - 1] != ' ')
+				new_len++;
+			if (next != ' ' && next != ';')
+				new_len++;
+		}
+		new_len++;
+	}
+	return (new_len);
+}
+/**
+ * logical_ops - Checks a line for logical operators "||" or "&&".
+ * @line: A pointer to the character to check in the line.
+ * @new_len: Pointer to new_len in get_new_len function.
+ */
+void logical_ops(char *line, ssize_t *new_len)
+{
+	char previous, current, next;
+
+	previous = *(line - 1);
+	current = *line;
+	next = *(line + 1);
+
+	if (current == '&')
+	{
+		if (next == '&' && previous != ' ')
+			(*new_len)++;
+		else if (previous == '&' && next != ' ')
+			(*new_len)++;
+	}
+	else if (current == '|')
+	{
+		if (next == '|' && previous != ' ')
+			(*new_len)++;
+		else if (previous == '|' && next != ' ')
+			(*new_len)++;
+	}
+}
+
+
+
+
+// End of helpers_1.c
+
+
+
+
+// Start of helpers_2.c
+#include "shell.h"
+
+/**
+ * get_args - Gets a command from standard input.
+ * @line: A buffer to store the command.
+ * @exe_ret: The return value of the last executed command.
+ *
+ * Return: If an error occurs - NULL.
+ *         Otherwise - a pointer to the stored command.
+ */
+char *get_args(char *line, int *exe_ret)
+{
+	size_t n = 0;
+	ssize_t read;
+	char *prompt = "$ ";
+
+	if (line)
+		free(line);
+
+	read = _getline(&line, &n, STDIN_FILENO);
+	if (read == -1)
+		return (NULL);
+	if (read == 1)
+	{
+		hist++;
+		if (isatty(STDIN_FILENO))
+			write(STDOUT_FILENO, prompt, 2);
+		return (get_args(line, exe_ret));
+	}
+
+	line[read - 1] = '\0';
+	substitute_arg(&line, exe_ret);
+	handle_line(&line, read);
+
+	return (line);
+}
+
+/**
+ * call_args - Partitions operators from commands and calls them.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
+ * @exe_ret: The return value of the parent process' last executed command.
+ *
+ * Return: The return value of the last executed command.
+ */
+int call_args(char **args, char **front, int *exe_ret)
+{	int ret, index;
+
+	if (!args[0])
+		return (*exe_ret);
+	for (index = 0; args[index]; index++)
+	{
+		if (_strncmp(args[index], "||", 2) == 0)
+		{	free(args[index]);
+			args[index] = NULL;
+			args = replace_aliases(args);
+			ret = run_args(args, front, exe_ret);
+			if (*exe_ret != 0)
+			{	args = &args[++index];
+				index = 0;
+			}
+			else
+			{
+				for (index++; args[index]; index++)
+					free(args[index]);
+				return (ret);
+			}
+		}
+		else if (_strncmp(args[index], "&&", 2) == 0)
+		{	free(args[index]);
+			args[index] = NULL;
+			args = replace_aliases(args);
+			ret = run_args(args, front, exe_ret);
+			if (*exe_ret == 0)
+			{	args = &args[++index];
+				index = 0;
+			}
+			else
+			{
+				for (index++; args[index]; index++)
+					free(args[index]);
+				return (ret);
+			}
+		}
+	}	args = replace_aliases(args);
+	ret = run_args(args, front, exe_ret);
+	return (ret);
+}
+
+/**
+ * run_args - Calls the execution of a command.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
+ * @exe_ret: The return value of the parent process' last executed command.
+ *
+ * Return: The return value of the last executed command.
+ */
+int run_args(char **args, char **front, int *exe_ret)
+{
+	int ret, i;
+	int (*builtin)(char **args, char **front);
+
+	builtin = get_builtin(args[0]);
+
+	if (builtin)
+	{
+		ret = builtin(args + 1, front);
+		if (ret != EXIT)
+			*exe_ret = ret;
+	}
+	else
+	{
+		*exe_ret = execute(args, front);
+		ret = *exe_ret;
+	}
+
+	hist++;
+
+	for (i = 0; args[i]; i++)
+		free(args[i]);
+
+	return (ret);
+}
+
+/**
+ * handle_args - Gets, calls, and runs the execution of a command.
+ * @exe_ret: The return value of the parent process' last executed command.
+ *
+ * Return: If an end-of-file is read - END_OF_FILE (-2).
+ *         If the input cannot be tokenized - -1.
+ *         O/w - The exit value of the last executed command.
+ */
+int handle_args(int *exe_ret)
+{
+	int ret = 0, index;
+	char **args, *line = NULL, **front;
+
+	line = get_args(line, exe_ret);
+	if (!line)
+		return (END_OF_FILE);
+
+	args = _strtok(line, " ");
+	free(line);
+	if (!args)
+		return (ret);
+	if (check_args(args) != 0)
+	{
+		*exe_ret = 2;
+		free_args(args, args);
+		return (*exe_ret);
+	}
+	front = args;
+
+	for (index = 0; args[index]; index++)
+	{
+		if (_strncmp(args[index], ";", 1) == 0)
+		{
+			free(args[index]);
+			args[index] = NULL;
+			ret = call_args(args, front, exe_ret);
+			args = &args[++index];
+			index = 0;
+		}
+	}
+	if (args)
+		ret = call_args(args, front, exe_ret);
+
+	free(front);
+	return (ret);
+}
+
+/**
+ * check_args - Checks if there are any leading ';', ';;', '&&', or '||'.
+ * @args: 2D pointer to tokenized commands and arguments.
+ *
+ * Return: If a ';', '&&', or '||' is placed at an invalid position - 2.
+ *	   Otherwise - 0.
+ */
+int check_args(char **args)
+{
+	size_t i;
+	char *cur, *nex;
+
+	for (i = 0; args[i]; i++)
+	{
+		cur = args[i];
+		if (cur[0] == ';' || cur[0] == '&' || cur[0] == '|')
+		{
+			if (i == 0 || cur[1] == ';')
+				return (create_error(&args[i], 2));
+			nex = args[i + 1];
+			if (nex && (nex[0] == ';' || nex[0] == '&' || nex[0] == '|'))
+				return (create_error(&args[i + 1], 2));
+		}
+	}
+	return (0);
+}
+
+
+
+
+// End of helpers_2.c
+
+
+
+
+// Start of locate.c
+#include "shell.h"
+
+/**
+ * get_location - Locates a command in the PATH.
+ * @command: The command to locate.
+ *
+ * Return: If an error occurs or the command cannot be located - NULL.
+ *         Otherwise - the full pathname of the command.
+ */
+char *get_location(char *command)
+{
+	char **path, *temp;
+	list_t *dirs, *head;
+	struct stat st;
+
+	path = _getenv("PATH");
+	if (!path || !(*path))
+		return (NULL);
+
+	dirs = get_path_dir(*path + 5);
+	head = dirs;
+
+	while (dirs)
+	{
+		temp = malloc(_strlen(dirs->dir) + _strlen(command) + 2);
+		if (!temp)
+			return (NULL);
+
+		_strcpy(temp, dirs->dir);
+		_strcat(temp, "/");
+		_strcat(temp, command);
+
+		if (stat(temp, &st) == 0)
+		{
+			free_list(head);
+			return (temp);
+		}
+
+		dirs = dirs->next;
+		free(temp);
+	}
+
+	free_list(head);
+
+	return (NULL);
+}
+
+/**
+ * fill_path_dir - Copies path but also replaces leading/sandwiched/trailing
+ *		   colons (:) with current working directory.
+ * @path: The colon-separated list of directories.
+ *
+ * Return: A copy of path with any leading/sandwiched/trailing colons replaced
+ *	   with the current working directory.
+ */
+char *fill_path_dir(char *path)
+{	int i, length = 0;
+	char *path_copy, *pwd;
+
+	pwd = *(_getenv("PWD")) + 4;
+	for (i = 0; path[i]; i++)
+	{
+		if (path[i] == ':')
+		{
+			if (path[i + 1] == ':' || i == 0 || path[i + 1] == '\0')
+				length += _strlen(pwd) + 1;
+			else
+				length++;
+		}
+		else
+			length++;
+	}
+	path_copy = malloc(sizeof(char) * (length + 1));
+	if (!path_copy)
+		return (NULL);
+	path_copy[0] = '\0';
+	for (i = 0; path[i]; i++)
+	{
+		if (path[i] == ':')
+		{
+			if (i == 0)
+			{
+				_strcat(path_copy, pwd);
+				_strcat(path_copy, ":");
+			}
+			else if (path[i + 1] == ':' || path[i + 1] == '\0')
+			{
+				_strcat(path_copy, ":");
+				_strcat(path_copy, pwd);
+			}
+			else
+				_strcat(path_copy, ":");
+		}
+		else
+			_strncat(path_copy, &path[i], 1);
+	}	return (path_copy);
+}
+
+/**
+ * get_path_dir - Tokenizes a colon-separated list of
+ *                directories into a list_s linked list.
+ * @path: The colon-separated list of directories.
+ *
+ * Return: A pointer to the initialized linked list.
+ */
+list_t *get_path_dir(char *path)
+{
+	int index;
+	char **dirs, *path_copy;
+	list_t *head = NULL;
+
+	path_copy = fill_path_dir(path);
+	if (!path_copy)
+		return (NULL);
+	dirs = _strtok(path_copy, ":");
+	free(path_copy);
+	if (!dirs)
+		return (NULL);
+
+	for (index = 0; dirs[index]; index++)
+	{
+		if (add_node_end(&head, dirs[index]) == NULL)
+		{
+			free_list(head);
+			free(dirs);
+			return (NULL);
+		}
+	}
+
+	free(dirs);
+
+	return (head);
+}
+
+
+
+
+// End of locate.c
+
+
+
+
+// Start of parse.c
+#include "shell.h"
+
+/**
+ * token_len - Locates the delimiter index marking the end
+ *             of the first token contained within a string.
+ * @str: The string to be searched.
+ * @delim: The delimiter character.
+ *
+ * Return: The delimiter index marking the end of
+ *         the intitial token pointed to be str.
+ */
+int token_len(char *str, char *delim)
+{
+	int index = 0, len = 0;
+
+	while (*(str + index) && *(str + index) != *delim)
+	{
+		len++;
+		index++;
+	}
+
+	return (len);
+}
+
+/**
+ * count_tokens - Counts the number of delimited
+ *                words contained within a string.
+ * @str: The string to be searched.
+ * @delim: The delimiter character.
+ *
+ * Return: The number of words contained within str.
+ */
+int count_tokens(char *str, char *delim)
+{
+	int index, tokens = 0, len = 0;
+
+	for (index = 0; *(str + index); index++)
+		len++;
+
+	for (index = 0; index < len; index++)
+	{
+		if (*(str + index) != *delim)
+		{
+			tokens++;
+			index += token_len(str + index, delim);
+		}
+	}
+
+	return (tokens);
+}
+
+/**
+ * _strtok - Tokenizes a string.
+ * @line: The string.
+ * @delim: The delimiter character to tokenize the string by.
+ *
+ * Return: A pointer to an array containing the tokenized words.
+ */
+char **_strtok(char *line, char *delim)
+{
+	char **ptr;
+	int index = 0, tokens, t, letters, l;
+
+	tokens = count_tokens(line, delim);
+	if (tokens == 0)
+		return (NULL);
+
+	ptr = malloc(sizeof(char *) * (tokens + 2));
+	if (!ptr)
+		return (NULL);
+
+	for (t = 0; t < tokens; t++)
+	{
+		while (line[index] == *delim)
+			index++;
+
+		letters = token_len(line + index, delim);
+
+		ptr[t] = malloc(sizeof(char) * (letters + 1));
+		if (!ptr[t])
+		{
+			for (index -= 1; index >= 0; index--)
+				free(ptr[index]);
+			free(ptr);
+			return (NULL);
+		}
+
+		for (l = 0; l < letters; l++)
+		{
+			ptr[t][l] = line[index];
+			index++;
+		}
+
+		ptr[t][l] = '\0';
+	}
+	ptr[t] = NULL;
+	ptr[t + 1] = NULL;
+
+	return (ptr);
+}
+
+
+
+
+// End of parse.c
+
+
+
+
+// Start of shell.c
+#include "shell.h"
+
+/**
+ * sig_handler - Prints a new prompt upon a signal.
+ * @sig: The signal.
+ */
+void sig_handler(int sig)
+{
+	char *new_prompt = "\n$ ";
+
+	(void)sig;
+	signal(SIGINT, sig_handler);
+	write(STDIN_FILENO, new_prompt, 3);
+}
+
+/**
+ * execute - Executes a command in a child process.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
+ *
+ * Return: If an error occurs - a corresponding error code.
+ *         O/w - The exit value of the last executed command.
+ */
+int execute(char **args, char **front)
+{	pid_t child_pid;
+	int status, flag = 0, ret = 0;
+	char *command = args[0];
+
+	if (command[0] != '/' && command[0] != '.')
+	{	flag = 1;
+		command = get_location(command);
+	}
+	if (!command || (access(command, F_OK) == -1))
+	{
+		if (errno == EACCES)
+			ret = (create_error(args, 126));
+		else
+			ret = (create_error(args, 127));
+	}
+	else
+	{	child_pid = fork();
+		if (child_pid == -1)
+		{
+			if (flag)
+				free(command);
+			perror("Error child:");
+			return (1);
+		}
+		if (child_pid == 0)
+		{	execve(command, args, environ);
+			if (errno == EACCES)
+				ret = (create_error(args, 126));
+			free_env();
+			free_args(args, front);
+			free_alias_list(aliases);
+			_exit(ret);
+		}
+		else
+		{	wait(&status);
+			ret = WEXITSTATUS(status);
+		}
+	}
+	if (flag)
+		free(command);
+	return (ret);
+}
+
+/**
+ * main - Runs a simple UNIX command interpreter.
+ * @argc: The number of arguments supplied to the program.
+ * @argv: An array of pointers to the arguments.
+ *
+ * Return: The return value of the last executed command.
+ */
+int main(int argc, char *argv[])
+{	int ret = 0, retn;
+	int *exe_ret = &retn;
+	char *prompt = "$ ", *new_line = "\n";
+
+	name = argv[0];
+	hist = 1;
+	aliases = NULL;
+	signal(SIGINT, sig_handler);
+	*exe_ret = 0;
+	environ = _copyenv();
+	if (!environ)
+		exit(-100);
+	if (argc != 1)
+	{	ret = file_cmds(argv[1], exe_ret);
+		free_env();
+		free_alias_list(aliases);
+		return (*exe_ret);
+	}
+	if (!isatty(STDIN_FILENO))
+	{
+		while (ret != END_OF_FILE && ret != EXIT)
+			ret = handle_args(exe_ret);
+		free_env();
+		free_alias_list(aliases);
+		return (*exe_ret);
+	}
+	while (1)
+	{	write(STDOUT_FILENO, prompt, 2);
+		ret = handle_args(exe_ret);
+		if (ret == END_OF_FILE || ret == EXIT)
+		{
+			if (ret == END_OF_FILE)
+				write(STDOUT_FILENO, new_line, 1);
+			free_env();
+			free_alias_list(aliases);
+			exit(*exe_ret);
+		}
+	}
+	free_env();
+	free_alias_list(aliases);
+	return (*exe_ret);
+}
+
+
+
+
+// End of shell.c

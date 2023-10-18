@@ -79,3 +79,41 @@ char *_strncat(char *dest, const char *src, size_t n)
 
 	return (dest);
 }
+
+
+/**
+ * _strconcat - Copies a string and returns a pointer to the array.
+ *
+ * @s1: String 1
+ * @s2: String 2
+ *
+ * Return: Pointer to the array or NULL.
+ */
+char *_strconcat(char *s1, char *s2)
+{
+	int i = 0, j = 0, k = 0, n = 0;
+	char *str;
+
+	if (s1 == NULL)
+		s1 = "";
+	if (s2 == NULL)
+		s2 = "";
+
+	while (*(s1 + i))
+		i++;
+
+	while (*(s2 + j))
+		j++;
+
+	str = malloc(sizeof(char) * (i + j + 3));
+	if (str == NULL)
+		return (NULL);
+
+	for (k = 0; k < i; k++)
+		*(str + k) = *(s1 + k);
+
+	for (n = 0; n <= j; n++)
+		*(str + n + k) = *(s2 + n);
+
+	return (str);
+}

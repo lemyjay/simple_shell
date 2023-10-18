@@ -1,6 +1,36 @@
 #include "shell.h"
 
 /**
+ * _strdup - returns a pointer to a newly allocated space in memory,
+ * which contains a copy of the string given as a parameter.
+ *
+ * @str: string
+ *
+ * Return: pointer to space in memory or NULL
+ */
+char *_strdup(char *str)
+{
+	int length, i;
+	char *s;
+
+	if (!str)
+		return (NULL);
+
+	length = _strlen(str);
+	s = malloc(sizeof(char) * length + 1);
+
+	if (!s)
+		return (NULL);
+
+	for (i = 0; i < length; i++)
+		s[i] = str[i];
+
+	s[i] = END;
+
+	return (s);
+}
+
+/**
  * _strchr - Locates a character in a string.
  * @s: The string to be searched.
  * @c: The character to be located.
