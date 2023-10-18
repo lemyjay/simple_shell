@@ -2,6 +2,7 @@
 
 /**
  * error_env - Creates an error message for builtin_env errors.
+ *
  * @args: An array of arguments passed to the command.
  *
  * Return: The error string.
@@ -37,6 +38,7 @@ char *error_env(char **args)
 
 /**
  * error_1 - Creates an error message for builtin_alias errors.
+ *
  * @args: An array of arguments passed to the command.
  *
  * Return: The error string.
@@ -60,6 +62,7 @@ char *error_1(char **args)
 
 /**
  * error_2_exit - Creates an error message for builtin_exit errors.
+ *
  * @args: An array of arguments passed to the command.
  *
  * Return: The error string.
@@ -94,6 +97,7 @@ char *error_2_exit(char **args)
 
 /**
  * error_2_cd - Creates an error message for builtin_cd errors.
+ *
  * @args: An array of arguments passed to the command.
  *
  * Return: The error string.
@@ -133,6 +137,7 @@ char *error_2_cd(char **args)
 
 /**
  * error_2_syntax - Creates an error message for syntax errors.
+ *
  * @args: An array of arguments passed to the command.
  *
  * Return: The error string.
