@@ -38,6 +38,8 @@ void interactive_mode(void)
 			setenv_command(args);
 		else if (_strcmp(args[0], "unsetenv") == 0)
 			unsetenv_command(args);
+		else if (_strcmp(args[0], "cd") == 0)
+			handle_cd_command(args);
 		else
 			find_command(args, input);
 	}
@@ -71,6 +73,8 @@ void non_interactive_mode(char *command)
 		setenv_command(args);
 	else if (_strcmp(args[0], "unsetenv") == 0)
 		unsetenv_command(args);
+	else if (_strcmp(args[0], "cd") == 0)
+		handle_cd_command(args);
 	else
 		find_command(args, input);
 	write(1, "\n", 1);

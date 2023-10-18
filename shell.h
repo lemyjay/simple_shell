@@ -48,6 +48,7 @@ void parse_command(char *command, char *args[], int *arg_count);
 void handle_exit_command(char **args, int arg_count, char *input);
 void setenv_command(char *args[]);
 void unsetenv_command(char *args[]);
+void handle_cd_command(char *args[]);
 
 
 /* Error handling functions */
