@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <stdbool.h>
+#include <limits.h>
 
 #define MAX_INPUT_SIZE 1024
 #define READ_SIZE 1024
@@ -35,6 +36,7 @@ char *_strstr(const char *haystack, const char *needle);
 char *_strerror(int errnum);
 size_t _strcspn(const char *str, const char *reject);
 char *_itoa(int num);
+int _atoi(char *str);
 void *_memcpy(void *dest, const void *src, size_t n);
 void *_realloc(void *ptr, size_t old_size, size_t new_size);
 char **_strtok(char *line, char *delim);
@@ -49,6 +51,9 @@ void print_prompt(void);
 ssize_t _getline(char **lineptr, size_t *n, FILE *stream);
 void parse_command(char *command, char *args[], int *arg_count);
 void handle_exit_command(char **args, int arg_count, char *input);
+void setenv_command(char *args[]);
+void unsetenv_command(char *args[]);
+void handle_cd_command(char *args[]);
 
 
 /* Error handling functions */
@@ -175,6 +180,77 @@ ssize_t _getline(char **lineptr, size_t *n, FILE *stream)
 
 
 
+// Start of builtins.c
+#include "shell.h"
+
+/**
+ * setenv_command - Set or update an environment variable.
+ *
+ * @args: An array of command arguments.
+ */
+void setenv_command(char *args[])
+{
+	if (args[1] == NULL || args[2] == NULL)
+	{
+		fprintf(stderr, "Usage: setenv VARIABLE VALUE\n");
+		return;
+	}
+	if (setenv(args[1], args[2], 1) != 0)
+		fprintf(stderr, "Failed to set environment variable\n");
+}
+
+/**
+ * unsetenv_command - Remove an environment variable.
+ *
+ * @args: An array of command arguments.
+ */
+void unsetenv_command(char *args[])
+{
+	if (args[1] == NULL)
+	{
+		fprintf(stderr, "Usage: unsetenv VARIABLE\n");
+		return;
+	}
+	if (unsetenv(args[1]) != 0)
+		fprintf(stderr, "Failed to unset environment variable\n");
+}
+
+/**
+ * handle_cd_command - change the current directory of the process.
+ *
+ * @args: an array of arguments containing the directory to change to.
+ */
+void handle_cd_command(char *args[])
+{
+	char *new_directory, *current_directory;
+
+	if (args[1] == NULL || _strcmp(args[1], "~") == 0)
+		new_directory = getenv("HOME");
+	else if (_strcmp(args[1], "-") == 0)
+		new_directory = getenv("OLDPWD");
+	else
+		new_directory = args[1];
+
+	current_directory = getcwd(NULL, 0);
+
+	if (chdir(new_directory) == 0)
+	{
+		setenv("OLDPWD", current_directory, 1);
+		setenv("PWD", getcwd(NULL, 0), 1);
+		free(current_directory);
+	}
+	else
+		perror("cd");
+}
+
+
+
+
+// End of builtins.c
+
+
+
+
 // Start of error_handle.c
 #include "shell.h"
 
@@ -216,24 +292,24 @@ void malloc_error(void)
  */
 void handle_exit_command(char **args, int arg_count, char *input)
 {
-       if (arg_count > 1)
-       {
-	       int exit_status = atoi(args[1]);
+	if (arg_count > 1)
+	{
+		int exit_status = _atoi(args[1]);
 
-	       free(input);
-	       if (exit_status != 0)
-		       exit(exit_status);
-	       else
-	       {
-		       perror("exit");
-		       exit(EXIT_FAILURE);
-	       }
-       }
-       else
-       {
-	       free(input);
-	       exit(EXIT_SUCCESS);
-       }
+		free(input);
+		if (exit_status != 0)
+			exit(exit_status);
+		else
+		{
+			perror("exit");
+			exit(EXIT_FAILURE);
+		}
+	}
+	else
+	{
+		free(input);
+		exit(EXIT_SUCCESS);
+	}
 }
 
 /**
@@ -682,7 +758,7 @@ void *_realloc(void *ptr, size_t old_size, size_t new_size)
 
 /**
  * _strdup - Duplicates a string in memory.
- * 
+ *
  * @str: the string to duplicate.
  *
  * Return: a pointer to the newly allocated string, or NULL if allocation fails
@@ -716,6 +792,56 @@ char *_strdup(const char *str)
 
 
 
+// Start of helper_f3.c
+#include "shell.h"
+
+/**
+ * _atoi - convert a string to an integer.
+ *
+ * @str: the string to convert.
+ *
+ * Return: the integer value, or 0 if conversion fails.
+ */
+int _atoi(char *str)
+{
+	int result = 0, sign = 1, i = 0;
+
+	while (str[i] == ' ' || (str[i] >= 9 && str[i] <= 13))
+		i++;
+
+	if (str[i] == '-')
+	{
+		sign = -1;
+		i++;
+	}
+	else if (str[i] == '+')
+		i++;
+
+	while (str[i] >= '0' && str[i] <= '9')
+	{
+		if (result > (INT_MAX - (str[i] - '0')) / 10)
+		{
+			if (sign == 1)
+				return (INT_MAX);
+			else
+				return (INT_MIN);
+		}
+
+		result = result * 10 + (str[i] - '0');
+		i++;
+	}
+
+	return (result * sign);
+}
+
+
+
+
+// End of helper_f3.c
+
+
+
+
 // Start of modes.c
 #include "shell.h"
 
@@ -727,16 +853,16 @@ void interactive_mode(void)
 	char *input = NULL;
 	size_t input_size = 0;
 	ssize_t bytes_read;
-	
+
 	while (1)
 	{
 		char *args[MAX_INPUT_SIZE];
 		int arg_count = 0;
-		
+
 		print_prompt();
 		fflush(stdout);
 		bytes_read = _getline(&input, &input_size, stdin);
-		
+
 		if (bytes_read == -1)
 		{
 			write(1, "\n", 1);
@@ -744,15 +870,21 @@ void interactive_mode(void)
 		}
 		if (bytes_read == 0)
 			break;
-		
+
 		input[bytes_read - 1] = '\0';
 		parse_command(input, args, &arg_count);
-		if (_strcmp(args[0], "quit") == 0 && arg_count == 1)		
+		if (_strcmp(args[0], "quit") == 0 && arg_count == 1)
 			break;
 		if (_strcmp(args[0], "exit") == 0)
 			handle_exit_command(args, arg_count, input);
 		if (_strcmp(args[0], "env") == 0 && arg_count == 1)
 			print_environment();
+		else if (_strcmp(args[0], "setenv") == 0)
+			setenv_command(args);
+		else if (_strcmp(args[0], "unsetenv") == 0)
+			unsetenv_command(args);
+		else if (_strcmp(args[0], "cd") == 0)
+			handle_cd_command(args);
 		else
 			find_command(args, input);
 	}
@@ -782,6 +914,12 @@ void non_interactive_mode(char *command)
 		handle_exit_command(args, arg_count, input);
 	if (_strcmp(args[0], "env") == 0 && arg_count == 1)
 		print_environment();
+	else if (_strcmp(args[0], "setenv") == 0)
+		setenv_command(args);
+	else if (_strcmp(args[0], "unsetenv") == 0)
+		unsetenv_command(args);
+	else if (_strcmp(args[0], "cd") == 0)
+		handle_cd_command(args);
 	else
 		find_command(args, input);
 	write(1, "\n", 1);
@@ -938,10 +1076,10 @@ char *_strtoken(char *str, const char *delim)
 
 	if (str)
 		token = str;
-	
+
 	if (!token || !delim)
 		return (NULL);
-	
+
 	i = 0;
 	while (token[i] != '\0')
 	{
