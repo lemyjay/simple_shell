@@ -1,7 +1,7 @@
 #ifndef _STR_TOOLS_H
 #define _STR_TOOLS_H
 
-#include "root.h"
+#include "shell.h"
 
 /**
  * _strlen - len of str

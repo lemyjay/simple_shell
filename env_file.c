@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 /**
  * builtin_env - Prints the current environment.

@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 /**
  * _copyenv - Creates a copy of the environment.

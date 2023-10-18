@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 /**
  * error_env - Creates an error message for builtin_env errors.

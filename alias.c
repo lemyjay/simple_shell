@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 char **replace_aliases(char **args);
 void print_alias(alias_t *alias);

@@ -1,5 +1,5 @@
-#ifndef _ROOT_H_
-#define _ROOT_H_
+#ifndef SHELL_H
+#define SHELL_H
 
 #include <fcntl.h>
 #include <signal.h>
@@ -145,4 +145,4 @@ void help_unsetenv(void);
 void help_history(void);
 
 int file_cmds(char *file_path, int *exe_ret);
-#endif /* _SHELL_H_ */
+#endif /* SHELL_H */

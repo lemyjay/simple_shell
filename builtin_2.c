@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 /**
  * help_env - Displays information on the shellby builtin command 'env'.

@@ -1,7 +1,7 @@
 #ifndef __GET_LINE_C_H
 #define __GET_LINE_C_H
 
-#include "root.h"
+#include "shell.h"
 
 #ifndef SSIZE_MAX
 # define SSIZE_MAX ((size_t) (SIZE_MAX / 2))

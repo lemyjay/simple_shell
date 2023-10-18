@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 ssize_t get_new_len(char *line);
 void logical_ops(char *line, ssize_t *new_len);

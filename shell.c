@@ -1,4 +1,4 @@
-#include "root.h"
+#include "shell.h"
 
 /**
  * sig_handler - Prints a new prompt upon a signal.
