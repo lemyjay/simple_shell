@@ -34,6 +34,10 @@ void interactive_mode(void)
 			handle_exit_command(args, arg_count, input);
 		if (_strcmp(args[0], "env") == 0 && arg_count == 1)
 			print_environment();
+		else if (_strcmp(args[0], "setenv") == 0)
+			setenv_command(args);
+		else if (_strcmp(args[0], "unsetenv") == 0)
+			unsetenv_command(args);
 		else
 			find_command(args, input);
 	}
@@ -63,6 +67,10 @@ void non_interactive_mode(char *command)
 		handle_exit_command(args, arg_count, input);
 	if (_strcmp(args[0], "env") == 0 && arg_count == 1)
 		print_environment();
+	else if (_strcmp(args[0], "setenv") == 0)
+		setenv_command(args);
+	else if (_strcmp(args[0], "unsetenv") == 0)
+		unsetenv_command(args);
 	else
 		find_command(args, input);
 	write(1, "\n", 1);

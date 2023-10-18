@@ -11,7 +11,7 @@ void handle_exit_command(char **args, int arg_count, char *input)
 {
 	if (arg_count > 1)
 	{
-		int exit_status = atoi(args[1]);
+		int exit_status = _atoi(args[1]);
 
 		free(input);
 		if (exit_status != 0)

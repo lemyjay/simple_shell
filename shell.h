@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <stdbool.h>
+#include <limits.h>
 
 #define MAX_INPUT_SIZE 1024
 #define READ_SIZE 1024
@@ -30,6 +31,7 @@ char *_strstr(const char *haystack, const char *needle);
 char *_strerror(int errnum);
 size_t _strcspn(const char *str, const char *reject);
 char *_itoa(int num);
+int _atoi(char *str);
 void *_memcpy(void *dest, const void *src, size_t n);
 void *_realloc(void *ptr, size_t old_size, size_t new_size);
 char **_strtok(char *line, char *delim);
@@ -44,6 +46,8 @@ void print_prompt(void);
 ssize_t _getline(char **lineptr, size_t *n, FILE *stream);
 void parse_command(char *command, char *args[], int *arg_count);
 void handle_exit_command(char **args, int arg_count, char *input);
+void setenv_command(char *args[]);
+void unsetenv_command(char *args[]);
 
 
 /* Error handling functions */
