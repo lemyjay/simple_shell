@@ -11,6 +11,7 @@ int (*get_builtin(char *command))(char **args, char **front)
 {
 	builtin_t funcs[] = {
 		{ "exit", builtin_exit },
+		{ "quit", builtin_exit},
 		{ "env", builtin_env },
 		{ "setenv", builtin_setenv },
 		{ "unsetenv", builtin_unsetenv },
