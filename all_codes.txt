@@ -1,0 +1,1029 @@
+
+
+
+
+// Start of shell.h
+#ifndef SHELL_H
+#define SHELL_H
+
+/* Custom header files included */
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stddef.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <stdbool.h>
+
+#define MAX_INPUT_SIZE 1024
+#define READ_SIZE 1024
+extern char **environ;
+
+/* Declaration of prototypes of helper functions */
+size_t _strlen(const char *str);
+char *_strdup(const char *str);
+char *_strcpy(char *dest, const char *src);
+char *_strncpy(char *dest, const char *src, size_t n);
+char *_strcat(char *dest, const char *src);
+char *_strncat(char *dest, const char *src, size_t n);
+int _strcmp(const char *str1, const char *str2);
+int _strncmp(const char *str1, const char *str2, size_t n);
+char *_strchr(const char *str, int character);
+char *_strstr(const char *haystack, const char *needle);
+char *_strerror(int errnum);
+size_t _strcspn(const char *str, const char *reject);
+char *_itoa(int num);
+void *_memcpy(void *dest, const void *src, size_t n);
+void *_realloc(void *ptr, size_t old_size, size_t new_size);
+char **_strtok(char *line, char *delim);
+char *_strtoken(char *str, const char *delim);
+
+/* Declaration of prototypes of functions for the project */
+void interactive_mode(void);
+void non_interactive_mode(char *command);
+void print_environment(void);
+void find_command(char *args[], char *input);
+void print_prompt(void);
+ssize_t _getline(char **lineptr, size_t *n, FILE *stream);
+void parse_command(char *command, char *args[], int *arg_count);
+void handle_exit_command(char **args, int arg_count, char *input);
+
+
+/* Error handling functions */
+void write_error(void);
+void malloc_error(void);
+
+#endif /* SHELL_H */
+
+
+
+
+// End of shell.h
+
+
+
+
+// Start of _getline.c
+#include "shell.h"
+
+/**
+ * init_buffer - Initialize the buffer and lineptr.
+ *
+ * @lineptr: A buffer to store the input line.
+ * @n: The size of lineptr.
+ */
+static void init_buffer(char **lineptr, size_t *n)
+{
+	*n = READ_SIZE;
+	*lineptr = malloc(*n);
+	if (*lineptr == NULL)
+		malloc_error();
+}
+
+/**
+ * process_buffer - Process the input buffer
+ *
+ * @lineptr: A pointer to the buffer where the line is stored
+ * @n: A pointer to the size of the buffer
+ * @buffer: The input buffer to process
+ * @buffer_index: A pointer to the current index in the buffer
+ * @bytes_read: The number of bytes read into the buffer
+ * @newline_found: A flag indicating if a newline character was found
+ *
+ * Return: The total number of bytes processed.
+ */
+ssize_t process_buffer(char **lineptr, size_t *n, char *buffer,
+ssize_t *buffer_index, ssize_t bytes_read, int *newline_found)
+{
+	ssize_t total_bytes = 0;
+
+	while (*buffer_index < bytes_read)
+	{
+		if (total_bytes >= READ_SIZE - 1)
+		{
+			char *temp = _realloc(*lineptr, *n, (*n) * 2);
+
+			if (temp == NULL)
+				return (-1);
+
+			*lineptr = temp;
+		}
+
+		(*lineptr)[total_bytes++] = buffer[(*buffer_index)++];
+
+		if ((*lineptr)[total_bytes - 1] == '\n')
+		{
+			*newline_found = 1;
+			break;
+		}
+	}
+
+	return (total_bytes);
+}
+
+/**
+ * _getline - Read a line from a file stream
+ *
+ * @lineptr: A pointer to the buffer storing the line
+ * @n: A pointer to the size of the buffer
+ * @stream: The input stream to read from
+ *
+ * Return: The number of bytes read, or -1 on failure
+ */
+ssize_t _getline(char **lineptr, size_t *n, FILE *stream)
+{
+	static char buffer[READ_SIZE];
+	static ssize_t buffer_index;
+	ssize_t bytes_read = 0, total_bytes = 0;
+	int newline_found = 0;
+
+	buffer_index = 0;
+	if (!lineptr || !n || !stream)
+		return (-1);
+
+	(*lineptr == NULL || *n == 0) ? init_buffer(lineptr, n) : (void)0;
+
+	while (1)
+	{
+		if (buffer_index == 0)
+		{
+			bytes_read = read(fileno(stream), buffer, READ_SIZE);
+
+			if (bytes_read <= 0)
+				return ((total_bytes == 0) ? -1 : total_bytes);
+		}
+
+		total_bytes = process_buffer(lineptr, n, buffer,
+		&buffer_index, bytes_read, &newline_found);
+
+		if (newline_found)
+		{
+			(*lineptr)[total_bytes] = '\0';
+			return (total_bytes);
+		}
+		buffer_index = 0;
+	}
+}
+
+
+
+
+// End of _getline.c
+
+
+
+
+// Start of error_handle.c
+#include "shell.h"
+
+/**
+ * write_error - Handles write function failure
+ */
+void write_error(void)
+{
+	perror("write");
+	exit(EXIT_FAILURE);
+}
+
+/**
+ * malloc_error - Handles malloc function failure
+ */
+void malloc_error(void)
+{
+	perror("malloc");
+	exit(EXIT_FAILURE);
+}
+
+
+
+
+// End of error_handle.c
+
+
+
+
+// Start of execute_cmd.c
+#include "shell.h"
+
+/**
+ * handle_exit_command - Handle the "exit" command with arguments.
+ *
+ * @args: array of command arguments.
+ * @arg_count: number of arguments.
+ * @input: the input string.
+ */
+void handle_exit_command(char **args, int arg_count, char *input)
+{
+       if (arg_count > 1)
+       {
+	       int exit_status = atoi(args[1]);
+
+	       free(input);
+	       if (exit_status != 0)
+		       exit(exit_status);
+	       else
+	       {
+		       perror("exit");
+		       exit(EXIT_FAILURE);
+	       }
+       }
+       else
+       {
+	       free(input);
+	       exit(EXIT_SUCCESS);
+       }
+}
+
+/**
+ * execute_command - Execute a command using execve
+ *
+ * @args: an array of arguments for the command.
+ * @input: the input to free in case of an error.
+ * @command: the command to execute.
+ */
+void execute_command(char *command, char *args[], char *input)
+{
+	pid_t pid = fork();
+
+	if (pid == -1)
+	{
+		free(input);
+		perror("fork");
+		exit(EXIT_FAILURE);
+	}
+	else if (pid == 0)
+	{
+		if (execve(command, args, environ) == -1)
+		{
+			free(input);
+			perror("execve");
+			exit(EXIT_FAILURE);
+		}
+	}
+	else
+		wait(NULL);
+}
+
+/**
+ * find_command - search for a command in the PATH and execute it
+ *
+ * @args: an array of arguments containing the command as the first element
+ * @input: the input string to free in case of an error
+ */
+void find_command(char *args[], char *input)
+{
+	char *command = args[0];
+
+	if (_strchr(command, '/') != NULL)
+		execute_command(command, args, input);
+	else
+	{
+		char *path = getenv("PATH"), *path_copy, *path_token;
+		int command_found = 0;
+
+		path_copy = _strdup(path);
+		if (path_copy == NULL)
+		{
+			perror("strdup");
+			free(input);
+			exit(EXIT_FAILURE);
+		}
+		path_token = _strtoken(path_copy, ":");
+		while (path_token != NULL)
+		{
+			char command_path[MAX_INPUT_SIZE];
+
+			_strcpy(command_path, path_token);
+			_strcat(command_path, "/");
+			_strcat(command_path, command);
+			if (access(command_path, X_OK) == 0)
+			{
+				execute_command(command_path, args, input);
+				command_found = 1;
+				break;
+			}
+			path_token = _strtoken(NULL, ":");
+		}
+		free(path_copy);
+		if (!command_found)
+			fprintf(stderr, "%s: command not found\n", command);
+	}
+}
+
+
+
+
+// End of execute_cmd.c
+
+
+
+
+// Start of helper_f0.c
+#include "shell.h"
+
+/**
+ * _strlen - Calculate the length of a null-terminated string.
+ *
+ * @str: The string to be measured.
+ *
+ * Return: The length of the string.
+ */
+size_t _strlen(const char *str)
+{
+	size_t length = 0;
+
+	while (str[length] != '\0')
+		length++;
+
+	return (length);
+}
+
+/**
+ * _strcpy - Copy a null-terminated string.
+ *
+ * @dest: The destination buffer.
+ * @src: The source string.
+ *
+ * Return: A pointer to the destination buffer.
+ */
+char *_strcpy(char *dest, const char *src)
+{
+	int i;
+
+	for (i = 0; src[i] != '\0'; i++)
+		dest[i] = src[i];
+
+	dest[i] = '\0';
+
+	return (dest);
+}
+
+/**
+ * _strncpy - Copy a specified number of characters from a string.
+ *
+ * @dest: The destination buffer.
+ * @src: The source string.
+ * @n: The maximum number of characters to copy.
+ *
+ * Return: A pointer to the destination buffer.
+ */
+char *_strncpy(char *dest, const char *src, size_t n)
+{
+	size_t i;
+
+	for (i = 0; i < n && src[i] != '\0'; i++)
+		dest[i] = src[i];
+
+	while (i < n)
+		dest[i++] = '\0';
+
+	return (dest);
+}
+
+/**
+ * _strcat - Concatenate (append) one string to another.
+ *
+ * @dest: The destination string.
+ * @src: The source string to append.
+ *
+ * Return: A pointer to the destination string.
+ */
+char *_strcat(char *dest, const char *src)
+{
+	size_t dest_len = _strlen(dest);
+	size_t i;
+
+	for (i = 0; src[i] != '\0'; i++)
+		dest[dest_len + i] = src[i];
+
+	dest[dest_len + i] = '\0';
+
+	return (dest);
+}
+
+/**
+ * _strncat - Concatenate (append) a specified number of characters from one
+ * string to another.
+ *
+ * @dest: The destination string.
+ * @src: The source string to append.
+ * @n: The maximum number of characters to append.
+ *
+ * Return: A pointer to the destination string.
+ */
+char *_strncat(char *dest, const char *src, size_t n)
+{
+	size_t dest_len = _strlen(dest);
+	size_t i;
+
+	for (i = 0; i < n && src[i] != '\0'; i++)
+		dest[dest_len + i] = src[i];
+
+	dest[dest_len + i] = '\0';
+
+	return (dest);
+}
+
+
+
+
+// End of helper_f0.c
+
+
+
+
+// Start of helper_f1.c
+#include "shell.h"
+
+/**
+ * _strcmp - Compare two strings lexicographically.
+ *
+ * @str1: The first string.
+ * @str2: The second string.
+ *
+ * Return: An integer less than, equal to, or greater than zero if str1 is
+ * found, respectively, to be less than, to match, or to be greater than str2.
+ */
+int _strcmp(const char *str1, const char *str2)
+{
+	int i = 0;
+
+	while (str1[i] && (str1[i] == str2[i]))
+		i++;
+
+	return (str1[i] - str2[i]);
+}
+
+/**
+ * _strncmp - Compare a specified number of characters from two strings
+ * lexicographically.
+ *
+ * @str1: The first string.
+ * @str2: The second string.
+ * @n: The maximum number of characters to compare.
+ *
+ * Return: An integer less than, equal to, or greater than zero if str1 is
+ * found, respectively, to be less than, to match, or to be greater than str2.
+ */
+int _strncmp(const char *str1, const char *str2, size_t n)
+{
+	size_t i = 0;
+
+	while (i < n && str1[i] && (str1[i] == str2[i]))
+		i++;
+
+	if (i == n)
+		return (0);
+
+	return (str1[i] - str2[i]);
+}
+
+/**
+ * _strchr - Locate the first occurrence of a character in a string.
+ *
+ * @str: The string to be searched.
+ * @character: The character to search for.
+ *
+ * Return: A pointer to the first occurrence of the character in the string,
+ * or NULL if the character is not found.
+ */
+char *_strchr(const char *str, int character)
+{
+	while (*str != '\0')
+	{
+		if (*str == character)
+			return ((char *)str);
+
+		str++;
+	}
+
+	if (character == '\0')
+		return ((char *)str);
+
+	return (NULL);
+}
+
+/**
+ * _strstr - Locate the first occurrence of a substring in a string.
+ *
+ * @haystack: The string to be searched.
+ * @needle: The substring to search for.
+ *
+ * Return: A pointer to the first occurrence of the substring in the string,
+ * or NULL if the substring is not found.
+ */
+char *_strstr(const char *haystack, const char *needle)
+{
+	size_t needle_len = _strlen(needle);
+
+	while (*haystack)
+	{
+		if (_strncmp(haystack, needle, needle_len) == 0)
+			return ((char *)haystack);
+
+		haystack++;
+	}
+
+	return (NULL);
+}
+
+/**
+ * _strerror - Convert an error code into a human-readable error message.
+ *
+ * @errnum: the error code to be converted.
+ *
+ * Return: a pointer to the error message string.
+ */
+char *_strerror(int errnum)
+{
+	return (strerror(errnum));
+}
+
+
+
+
+// End of helper_f1.c
+
+
+
+
+// Start of helper_f2.c
+#include "shell.h"
+
+/**
+ * _strcspn - Calculate the length of the initial segment of a string that
+ * consists of characters not in a specified set.
+ *
+ * @str: The string to be searched.
+ * @reject: A string containing the characters to be excluded.
+ *
+ * Return: The length of the initial segment of @str that contains characters
+ * not present in @reject.
+ */
+size_t _strcspn(const char *str, const char *reject)
+{
+	size_t length = 0;
+
+	while (str[length] != '\0')
+	{
+		if (_strchr(reject, str[length]) != NULL)
+			break;
+
+		length++;
+	}
+
+	return (length);
+}
+
+/**
+ * _itoa - Convert an integer to a string.
+ *
+ * @num: The integer to convert.
+ *
+ * Return: A dynamically allocated string representing the integer.
+ */
+char *_itoa(int num)
+{
+	int i = 0, is_negative = 0, temp, index = 0, start = 0, end;
+	char *str;
+
+	if (num < 0)
+	{
+		is_negative = 1;
+		num = -num;
+	}
+	temp = num;
+	while (temp > 0)
+	{
+		temp /= 10;
+		i++;
+	}
+	str = (char *)malloc((i + 1 + is_negative) * sizeof(char));
+	(str == NULL) ? malloc_error() : (void)0;
+	do {
+		str[index++] = num % 10 + '0';
+		num /= 10;
+	} while (num > 0);
+	if (is_negative)
+		str[index++] = '-';
+	str[index] = '\0';
+	end = index - 1;
+	while (start < end)
+	{
+		char temp = str[start];
+
+		str[start] = str[end];
+		str[end] = temp;
+		start++;
+		end--;
+	}
+	return (str);
+}
+
+/**
+ * _memcpy - copy memory area
+ *
+ * @dest: pointer to the destination memory
+ * @src: pointer to the source memory
+ * @n: number of bytes to copy
+ *
+ * Return: pointer to the destination memory (dest)
+ */
+void *_memcpy(void *dest, const void *src, size_t n)
+{
+	unsigned char *d = dest;
+	const unsigned char *s = src;
+	size_t i;
+
+	if (d == NULL && s == NULL)
+		return (NULL);
+
+	for (i = 0; i < n; i++)
+		d[i] = s[i];
+
+	return (dest);
+}
+
+/**
+ * _realloc - Reallocate a memory block with a new size.
+ *
+ * @ptr: pointer to the previously allocated memory
+ * @old_size: the size (in bytes) of the old allocated memory
+ * @new_size: the new size (in bytes) to allocate
+ *
+ * Return: pointer to the newly allocated memory, or NULL on failure
+ */
+void *_realloc(void *ptr, size_t old_size, size_t new_size)
+{
+	void *new_ptr;
+	size_t copy_size;
+
+	if (new_size == 0)
+	{
+		free(ptr);
+		return (NULL);
+	}
+
+	if (ptr == NULL)
+		return (malloc(new_size));
+
+	new_ptr = malloc(new_size);
+	if (new_ptr == NULL)
+		return (NULL);
+
+	copy_size = (old_size < new_size) ? old_size : new_size;
+	_memcpy(new_ptr, ptr, copy_size);
+	free(ptr);
+
+	return (new_ptr);
+}
+
+/**
+ * _strdup - Duplicates a string in memory.
+ * 
+ * @str: the string to duplicate.
+ *
+ * Return: a pointer to the newly allocated string, or NULL if allocation fails
+ */
+char *_strdup(const char *str)
+{
+	char *duplicate;
+	unsigned int length;
+	unsigned int i;
+
+	if (str == NULL)
+		return (NULL);
+
+	length = _strlen(str);
+	duplicate = malloc(sizeof(char) * (length + 1));
+
+	if (duplicate == NULL)
+		return (NULL);
+
+	for (i = 0; i <= length; i++)
+		duplicate[i] = str[i];
+
+	return (duplicate);
+}
+
+
+
+
+// End of helper_f2.c
+
+
+
+
+// Start of modes.c
+#include "shell.h"
+
+/**
+ * interactive_mode - Run the shell in interactive mode.
+ */
+void interactive_mode(void)
+{
+	char *input = NULL;
+	size_t input_size = 0;
+	ssize_t bytes_read;
+	
+	while (1)
+	{
+		char *args[MAX_INPUT_SIZE];
+		int arg_count = 0;
+		
+		print_prompt();
+		fflush(stdout);
+		bytes_read = _getline(&input, &input_size, stdin);
+		
+		if (bytes_read == -1)
+		{
+			write(1, "\n", 1);
+			break;
+		}
+		if (bytes_read == 0)
+			break;
+		
+		input[bytes_read - 1] = '\0';
+		parse_command(input, args, &arg_count);
+		if (_strcmp(args[0], "quit") == 0 && arg_count == 1)		
+			break;
+		if (_strcmp(args[0], "exit") == 0)
+			handle_exit_command(args, arg_count, input);
+		if (_strcmp(args[0], "env") == 0 && arg_count == 1)
+			print_environment();
+		else
+			find_command(args, input);
+	}
+	free(input);
+}
+
+/**
+ * non_interactive_mode - Run the shell in non-interactive mode with a given
+ * command.
+ *
+ * @command: The command to execute.
+ */
+void non_interactive_mode(char *command)
+{
+	char *args[MAX_INPUT_SIZE];
+	int arg_count = 0;
+	char *input = _strdup(command);
+
+	if (input == NULL)
+	{
+		perror("strdup");
+		return;
+	}
+
+	parse_command(input, args, &arg_count);
+	if (_strcmp(args[0], "exit") == 0)
+		handle_exit_command(args, arg_count, input);
+	if (_strcmp(args[0], "env") == 0 && arg_count == 1)
+		print_environment();
+	else
+		find_command(args, input);
+	write(1, "\n", 1);
+	free(input);
+}
+
+
+
+
+
+
+// End of modes.c
+
+
+
+
+// Start of parse_command.c
+#include "shell.h"
+
+/**
+ * parse_command - A function to parse the command into arguments.
+ *
+ * @command: the input command string to be parsed.
+ * @args: an array to store the individual arguments.
+ * @arg_count: a counter for the number of arguments found during parsing.
+ */
+void parse_command(char *command, char *args[], int *arg_count)
+{
+	char **token = _strtok(command, " \t\n");
+
+	while (token[*arg_count] != NULL)
+	{
+		args[*arg_count] = token[*arg_count];
+		(*arg_count)++;
+	}
+
+	args[*arg_count] = NULL;
+	free(token);
+}
+
+/**
+ * token_len - Locates the delimiter index marking the end of the first token
+ * contained within a string.
+ *
+ * @str: the string to be searched.
+ * @delim: the delimiter character.
+ *
+ * Return: the delimiter index marking the end of the initial token pointed to
+ * in str.
+ */
+int token_len(char *str, char *delim)
+{
+	int index = 0, len = 0;
+
+	while (*(str + index) && *(str + index) != *delim)
+	{
+		len++;
+		index++;
+	}
+
+	return (len);
+}
+
+/**
+ * count_tokens - counts the number of delimited words contained within a
+ * string.
+ *
+ * @str: the string to be searched.
+ * @delim: the delimiter character.
+ *
+ * Return: the number of words contained within str.
+ */
+int count_tokens(char *str, char *delim)
+{
+	int index, tokens = 0, len = 0;
+
+	for (index = 0; *(str + index); index++)
+		len++;
+
+	for (index = 0; index < len; index++)
+	{
+		if (*(str + index) != *delim)
+		{
+			tokens++;
+			index += token_len(str + index, delim);
+		}
+	}
+
+	return (tokens);
+}
+
+/**
+ * _strtok - tokenizes a string.
+ *
+ * @line: the string
+ * @delim: the delimiter character to tokenize the string with
+ *
+ * Return: a pointer to an array containing the tokenized words.
+ */
+char **_strtok(char *line, char *delim)
+{
+	char **ptr;
+	int index = 0, tokens, a, letters, b;
+
+	tokens = count_tokens(line, delim);
+	if (tokens == 0)
+		return (NULL);
+
+	ptr = malloc(sizeof(char *) * (tokens + 2));
+	if (!ptr)
+		return (NULL);
+
+	for (a = 0; a < tokens; a++)
+	{
+		while (line[index] == *delim)
+			index++;
+
+		letters = token_len(line + index, delim);
+
+		ptr[a] = malloc(sizeof(char) * (letters + 1));
+		if (!ptr[a])
+		{
+			for (index -= 1; index >= 0; index--)
+				free(ptr[index]);
+			free(ptr);
+			return (NULL);
+		}
+
+		for (b = 0; b < letters; b++)
+		{
+			ptr[a][b] = line[index];
+			index++;
+		}
+		ptr[a][b] = '\0';
+	}
+	ptr[a] = NULL;
+	ptr[a + 1] = NULL;
+
+	return (ptr);
+}
+
+/**
+ * _strtoken - Tokenizes a string into tokens based on a delimiter.
+ *
+ * @str: The string to tokenize.
+ * @delim: The delimiter character.
+ *
+ * Return: A pointer to the next token or NULL if no more tokens are found.
+ */
+char *_strtoken(char *str, const char *delim)
+{
+	static char *token;
+	int i, j;
+
+	if (str)
+		token = str;
+	
+	if (!token || !delim)
+		return (NULL);
+	
+	i = 0;
+	while (token[i] != '\0')
+	{
+		j = 0;
+		while (delim[j] != '\0')
+		{
+			if (token[i] == delim[j])
+			{
+				token[i] = '\0';
+				token += i + 1;
+				return (token - i - 1);
+			}
+			j++;
+		}
+		i++;
+	}
+	token = NULL;
+	return (token);
+}
+
+
+
+
+// End of parse_command.c
+
+
+
+
+// Start of shell.c
+#include "shell.h"
+
+/**
+ * print_prompt - Display a shell prompt.
+ */
+void print_prompt(void)
+{
+	if (write(STDOUT_FILENO, "($) ", 4) == -1)
+		write_error();
+}
+
+/**
+ * print_environment - A function to print current environment variables
+ */
+void print_environment(void)
+{
+	char **env = environ;
+
+	while (*env)
+	{
+		write(STDOUT_FILENO, *env, _strlen(*env));
+		write(STDOUT_FILENO, "\n", 1);
+		env++;
+	}
+}
+
+/**
+ * main - Entry point to the shell program
+ *
+ * @argc: number of command line arguments
+ * @argv: array of command line arguments
+ * Return: 0 for success.
+ */
+int main(int argc, char *argv[])
+{
+	if (argc == 1)
+		interactive_mode();
+	else if (argc == 2)
+	{
+		char *command = argv[0];
+
+		non_interactive_mode(command);
+	}
+	else
+	{
+		fprintf(stderr, "Usage: %s [command]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	return (0);
+}
+
+
+
+
+// End of shell.c

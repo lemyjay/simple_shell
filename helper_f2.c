@@ -127,3 +127,31 @@ void *_realloc(void *ptr, size_t old_size, size_t new_size)
 
 	return (new_ptr);
 }
+
+/**
+ * _strdup - Duplicates a string in memory.
+ *
+ * @str: the string to duplicate.
+ *
+ * Return: a pointer to the newly allocated string, or NULL if allocation fails
+ */
+char *_strdup(const char *str)
+{
+	char *duplicate;
+	unsigned int length;
+	unsigned int i;
+
+	if (str == NULL)
+		return (NULL);
+
+	length = _strlen(str);
+	duplicate = malloc(sizeof(char) * (length + 1));
+
+	if (duplicate == NULL)
+		return (NULL);
+
+	for (i = 0; i <= length; i++)
+		duplicate[i] = str[i];
+
+	return (duplicate);
+}

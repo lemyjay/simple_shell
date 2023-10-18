@@ -1,111 +1,106 @@
 #include "shell.h"
 
 /**
- * parse_command - A function to parse the command into arguments.
+ * handle_exit_command - Handle the "exit" command with arguments.
  *
- * @command: the input command string to be parsed.
- * @args: an array to store the individual arguments.
- * @arg_count: a counter for the number of arguments found during parsing.
+ * @args: array of command arguments.
+ * @arg_count: number of arguments.
+ * @input: the input string.
  */
-void parse_command(char *command, char *args[], int *arg_count)
+void handle_exit_command(char **args, int arg_count, char *input)
 {
-	char **token = _strtok(command, " \t\n");
-
-	while (token[*arg_count] != NULL)
+	if (arg_count > 1)
 	{
-		args[*arg_count] = token[*arg_count];
-		(*arg_count)++;
+		int exit_status = atoi(args[1]);
+
+		free(input);
+		if (exit_status != 0)
+			exit(exit_status);
+		else
+		{
+			perror("exit");
+			exit(EXIT_FAILURE);
+		}
 	}
-
-	args[*arg_count] = NULL;
-	free(token);
-}
-
-/**
- * execute_child - A function to execute the command in the child process.
- *
- * @args: commands retreived after parsing the input from the terminal.
- */
-void execute_child(char *args[])
-{
-	/*extern char **environ;*/
-
-	/*execve(args[0], args, environ);*/
-
-	if (execvp(args[0], args) == -1)
+	else
 	{
-		perror("execvp");
-		exit(EXIT_FAILURE);
+		free(input);
+		exit(EXIT_SUCCESS);
 	}
 }
 
 /**
- * handle_parent - A function to handle the parent process (waiting for child).
+ * execute_command - Execute a command using execve
  *
- * @pid: the pid of the parent.
+ * @args: an array of arguments for the command.
+ * @input: the input to free in case of an error.
+ * @command: the command to execute.
  */
-void handle_parent(pid_t pid)
-{
-	int status;
-	char *str_exit = "Child process exited with status code: ";
-	char *str_signal = "Child process terminated by signal: ";
-
-	if (waitpid(pid, &status, 0) == -1)
-	{
-		perror("waitpid");
-		exit(EXIT_FAILURE);
-	}
-
-	if (WIFEXITED(status))
-	{
-		int exit_status = WEXITSTATUS(status), len = 0;
-		char *str_stat =  _itoa(exit_status);
-
-		len += write(STDOUT_FILENO, str_exit, _strlen(str_exit));
-		len += write(STDOUT_FILENO, str_stat, _strlen(str_stat));
-		len += write(STDOUT_FILENO, "\n", 1);
-
-		(len < 0) ? write_error() : (void)0;
-		free(str_stat);
-	}
-	else if (WIFSIGNALED(status))
-	{
-		int signal_number = WTERMSIG(status), len = 0;
-
-		len += write(STDOUT_FILENO, str_signal, _strlen(str_signal));
-		len += write(STDOUT_FILENO, _itoa(signal_number), len);
-		len += write(STDOUT_FILENO, "\n", 1);
-
-		(len < 0) ? write_error() : (void)0;
-		free(_itoa(signal_number));
-	}
-}
-
-/**
- * execute_command - Execute a command in a child process.
- *
- * @command: The command to execute.
- */
-void execute_command(char *command)
+void execute_command(char *command, char *args[], char *input)
 {
 	pid_t pid = fork();
 
 	if (pid == -1)
 	{
-		free(command);
+		free(input);
 		perror("fork");
 		exit(EXIT_FAILURE);
 	}
 	else if (pid == 0)
 	{
-		char *args[MAX_INPUT_SIZE];
-		int arg_count = 0;
-
-		parse_command(command, args, &arg_count);
-		execute_child(args);
+		if (execve(command, args, environ) == -1)
+		{
+			free(input);
+			perror("execve");
+			exit(EXIT_FAILURE);
+		}
 	}
 	else
+		wait(NULL);
+}
+
+/**
+ * find_command - search for a command in the PATH and execute it
+ *
+ * @args: an array of arguments containing the command as the first element
+ * @input: the input string to free in case of an error
+ */
+void find_command(char *args[], char *input)
+{
+	char *command = args[0];
+
+	if (_strchr(command, '/') != NULL)
+		execute_command(command, args, input);
+	else
 	{
-		handle_parent(pid);
+		char *path = getenv("PATH"), *path_copy, *path_token;
+		int command_found = 0;
+
+		path_copy = _strdup(path);
+		if (path_copy == NULL)
+		{
+			perror("strdup");
+			free(input);
+			exit(EXIT_FAILURE);
+		}
+		path_token = _strtoken(path_copy, ":");
+		while (path_token != NULL)
+		{
+			char command_path[MAX_INPUT_SIZE];
+
+			_strcpy(command_path, path_token);
+			_strcat(command_path, "/");
+			_strcat(command_path, command);
+			if (access(command_path, X_OK) == 0)
+			{
+				execute_command(command_path, args, input);
+				command_found = 1;
+				break;
+			}
+			path_token = _strtoken(NULL, ":");
+		}
+		free(path_copy);
+		if (!command_found)
+			fprintf(stderr, "%s: command not found\n", command);
 	}
 }

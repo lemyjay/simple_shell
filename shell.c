@@ -5,11 +5,8 @@
  */
 void print_prompt(void)
 {
-	char prompt[] = "$ ";
-	ssize_t bytes_written = write(STDOUT_FILENO, prompt,
-	sizeof(prompt) - 1);
-
-	(bytes_written == -1) ? write_error() : (void)0;
+	if (write(STDOUT_FILENO, "($) ", 4) == -1)
+		write_error();
 }
 
 /**
@@ -30,42 +27,25 @@ void print_environment(void)
 /**
  * main - Entry point to the shell program
  *
+ * @argc: number of command line arguments
+ * @argv: array of command line arguments
  * Return: 0 for success.
  */
-int main(void)
+int main(int argc, char *argv[])
 {
-	char *input = NULL;
-	size_t input_size = 0;
-	ssize_t bytes_read;
-
-	while (true)
+	if (argc == 1)
+		interactive_mode();
+	else if (argc == 2)
 	{
-		print_prompt();
-		fflush(stdout);
+		char *command = argv[0];
 
-		bytes_read = _getline(&input, &input_size, stdin);
-
-		if (bytes_read == -1)
-		{
-			free(input);
-			break;
-		}
-
-		if (bytes_read == 0)
-			break;
-
-		input[bytes_read - 1] = '\0';
-
-		if (_strcmp(input, "exit") == 0 || _strcmp(input, "quit") == 0)
-			break;
-
-		if (_strcmp(input, "env") == 0)
-			print_environment();
-		else
-			execute_command(input);
+		non_interactive_mode(command);
 	}
-
-	free(input);
+	else
+	{
+		fprintf(stderr, "Usage: %s [command]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
 
 	return (0);
 }

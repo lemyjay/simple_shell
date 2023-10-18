@@ -18,6 +18,7 @@ extern char **environ;
 
 /* Declaration of prototypes of helper functions */
 size_t _strlen(const char *str);
+char *_strdup(const char *str);
 char *_strcpy(char *dest, const char *src);
 char *_strncpy(char *dest, const char *src, size_t n);
 char *_strcat(char *dest, const char *src);
@@ -32,11 +33,18 @@ char *_itoa(int num);
 void *_memcpy(void *dest, const void *src, size_t n);
 void *_realloc(void *ptr, size_t old_size, size_t new_size);
 char **_strtok(char *line, char *delim);
+char *_strtoken(char *str, const char *delim);
 
 /* Declaration of prototypes of functions for the project */
-void execute_command(char *command);
+void interactive_mode(void);
+void non_interactive_mode(char *command);
+void print_environment(void);
+void find_command(char *args[], char *input);
 void print_prompt(void);
 ssize_t _getline(char **lineptr, size_t *n, FILE *stream);
+void parse_command(char *command, char *args[], int *arg_count);
+void handle_exit_command(char **args, int arg_count, char *input);
+
 
 /* Error handling functions */
 void write_error(void);

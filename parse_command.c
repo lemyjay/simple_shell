@@ -1,6 +1,27 @@
 #include "shell.h"
 
 /**
+ * parse_command - A function to parse the command into arguments.
+ *
+ * @command: the input command string to be parsed.
+ * @args: an array to store the individual arguments.
+ * @arg_count: a counter for the number of arguments found during parsing.
+ */
+void parse_command(char *command, char *args[], int *arg_count)
+{
+	char **token = _strtok(command, " \t\n");
+
+	while (token[*arg_count] != NULL)
+	{
+		args[*arg_count] = token[*arg_count];
+		(*arg_count)++;
+	}
+
+	args[*arg_count] = NULL;
+	free(token);
+}
+
+/**
  * token_len - Locates the delimiter index marking the end of the first token
  * contained within a string.
  *
@@ -99,4 +120,43 @@ char **_strtok(char *line, char *delim)
 	ptr[a + 1] = NULL;
 
 	return (ptr);
+}
+
+/**
+ * _strtoken - Tokenizes a string into tokens based on a delimiter.
+ *
+ * @str: The string to tokenize.
+ * @delim: The delimiter character.
+ *
+ * Return: A pointer to the next token or NULL if no more tokens are found.
+ */
+char *_strtoken(char *str, const char *delim)
+{
+	static char *token;
+	int i, j;
+
+	if (str)
+		token = str;
+
+	if (!token || !delim)
+		return (NULL);
+
+	i = 0;
+	while (token[i] != '\0')
+	{
+		j = 0;
+		while (delim[j] != '\0')
+		{
+			if (token[i] == delim[j])
+			{
+				token[i] = '\0';
+				token += i + 1;
+				return (token - i - 1);
+			}
+			j++;
+		}
+		i++;
+	}
+	token = NULL;
+	return (token);
 }
